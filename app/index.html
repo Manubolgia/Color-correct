@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UW Color</title>
+<meta name="description" content="Fix underwater photos and GoPro video on your phone or computer. Full-resolution JPEG, video up to 4K60, works offline. Nothing is uploaded.">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="light dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="UW Color">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<header class="bar">
+  <a class="mark" href="./" aria-label="UW Color, start over">UW<i>/</i>COLOR</a>
+  <span id="offline" class="bar-note" hidden>OFFLINE READY</span>
+  <span class="bar-fill"></span>
+  <button id="updateBtn" class="bar-btn hot" type="button" hidden>UPDATE</button>
+  <button id="installBtn" class="bar-btn" type="button" hidden>INSTALL</button>
+</header>
+
+<main>
+  <section id="empty" class="empty">
+    <label id="drop" class="drop" for="file">
+      <span class="k">INPUT — JPG · PNG · HEIC · MP4 · MOV</span>
+      <span class="drop-h">Drop photos<br>or video.</span>
+      <span class="drop-cta">CHOOSE FILES <b>→</b></span>
+    </label>
+    <ol class="facts">
+      <li><span class="k">01</span><b>AUTO FIX</b><span>Restores the reds the water took and strips the blue-green haze.</span></li>
+      <li><span class="k">02</span><b>TAP NEUTRAL</b><span>Tap sand, a tank or a white fin for an exact white balance.</span></li>
+      <li><span class="k">03</span><b>EXPORT</b><span>Full-resolution JPEG that keeps the camera’s metadata. Video up to 4K60. .cube LUT for editors.</span></li>
+    </ol>
+    <p class="foot">Runs on this device. Nothing is uploaded.<span id="iosTip" hidden> To install: Share → Add to Home Screen.</span></p>
+  </section>
+
+  <section id="editor" class="editor" hidden>
+    <nav id="strip" class="strip" aria-label="Files"></nav>
+    <div class="work">
+      <div class="view">
+        <div id="stage" class="stage">
+          <div id="frame" class="frame" tabindex="0" role="slider" aria-label="Before and after comparison" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+            <canvas id="after"></canvas>
+            <canvas id="before"></canvas>
+            <div id="divider" class="divider"></div>
+            <span id="tagL" class="tag l">BEFORE</span>
+            <span id="tagR" class="tag r">AFTER</span>
+            <div id="marker" class="marker" hidden></div>
+          </div>
+          <div id="loading" class="loading" hidden>LOADING</div>
+          <p id="stageMsg" class="stage-msg" hidden></p>
+        </div>
+        <div id="videoBar" class="scrub" hidden>
+          <input id="scrub" type="range" min="0" max="1000" step="1" value="0" aria-label="Video position">
+          <span id="timeLabel">0:00</span>
+        </div>
+        <p id="hint" class="hint">DRAG ACROSS THE IMAGE TO COMPARE</p>
+      </div>
+
+      <aside id="panel" class="panel">
+        <div class="file">
+          <div class="file-top"><span id="fileName" class="fname"></span><button id="removeBtn" class="link" type="button">REMOVE</button></div>
+          <div id="fileInfo" class="finfo"></div>
+        </div>
+
+        <div class="group">
+          <div class="label">WHITE BALANCE</div>
+          <div class="seg">
+            <button id="autoBtn" type="button" class="on">AUTO</button>
+            <button id="pickBtn" type="button">TAP NEUTRAL</button>
+          </div>
+        </div>
+
+        <div id="modeGroup" class="group" hidden>
+          <div class="label">VIDEO COLOUR</div>
+          <div class="seg">
+            <button id="adaptBtn" type="button" class="on">ADAPTIVE</button>
+            <button id="lockBtn" type="button">LOCK TO FRAME</button>
+          </div>
+          <p id="modeNote" class="fine"></p>
+        </div>
+
+        <div class="group">
+          <div class="label-row"><span class="label">ADJUST</span><button id="resetBtn" class="link" type="button">RESET</button></div>
+          <div id="sliders"></div>
+        </div>
+
+        <div class="group">
+          <div class="label">OUTPUT QUALITY</div>
+          <div id="qualSeg" class="seg">
+            <button type="button" data-q="std">STD</button>
+            <button type="button" data-q="high">HIGH</button>
+            <button type="button" data-q="max">MAX</button>
+          </div>
+          <p id="qualNote" class="fine"></p>
+        </div>
+
+        <div class="group">
+          <div class="label">MORE</div>
+          <div class="pair">
+            <button id="frameBtn" class="btn" type="button" hidden>SAVE FRAME</button>
+            <button id="lutBtn" class="btn" type="button">.CUBE LUT</button>
+          </div>
+          <div id="folderRow" class="folder" hidden>
+            <span class="label">SAVE TO</span>
+            <span id="folderName" class="fval">ASK EACH TIME</span>
+            <button id="folderBtn" class="link" type="button">CHOOSE FOLDER</button>
+          </div>
+        </div>
+
+        <div class="go">
+          <button id="saveBtn" class="btn primary" type="button">SAVE PHOTO</button>
+          <button id="allBtn" class="btn" type="button" hidden>EXPORT ALL</button>
+        </div>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<input type="file" id="file" class="sr-only" accept="image/*,video/*,.jpg,.jpeg,.png,.heic,.heif,.mp4,.mov" multiple tabindex="-1">
+
+<div id="job" class="dock" hidden>
+  <div class="meter"><i id="jobBar"></i></div>
+  <div class="dock-in">
+    <div class="dock-text">
+      <strong id="jobTitle">EXPORTING</strong>
+      <span id="jobSub"></span>
+    </div>
+    <span id="jobPct" class="pct">0%</span>
+    <button id="cancelBtn" class="btn" type="button">CANCEL</button>
+  </div>
+</div>
+
+<div id="sheet" class="dock" role="dialog" aria-labelledby="sheetTitle" hidden>
+  <div class="dock-in">
+    <div class="dock-text">
+      <strong id="sheetTitle">READY</strong>
+      <span id="sheetSub"></span>
+    </div>
+    <div id="sheetBtns" class="dock-btns"></div>
+    <button id="sheetClose" class="btn ghost" type="button" aria-label="Close">CLOSE</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

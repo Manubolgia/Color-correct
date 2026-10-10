@@ -1,0 +1,15 @@
+{
+  "name": "uw-color-tools",
+  "private": true,
+  "type": "module",
+  "description": "Dev tooling only. The app in ../app is plain static files with no build step.",
+  "scripts": {
+    "vendor": "node build-vendor.mjs",
+    "check": "node check-assets.mjs",
+    "test": "node test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "mediabunny": "1.59.1"
+  }
+}
