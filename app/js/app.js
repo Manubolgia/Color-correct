@@ -377,16 +377,17 @@ function closeClip() {
   if (S.clipP) S.clipP.then(function (c) { c.dispose(); }, function () {});
   S.clipP = null; S.clipItem = null;
 }
-var vcanvas = document.createElement('canvas');
+var frameReq = 0;
 function showFrame(it, t, token) {
+  var req = ++frameReq; // only the most recently requested frame may reach the screen
   return openClip(it).then(function (clip) {
-    var p = previewSize(clip.info.width, clip.info.height);
-    if (vcanvas.width !== p[0] || vcanvas.height !== p[1]) { vcanvas.width = p[0]; vcanvas.height = p[1]; }
-    return clip.draw(t, vcanvas.getContext('2d')).then(function () {
-      if (token !== S.token) return;
+    var p = previewSize(clip.info.width, clip.info.height), c = document.createElement('canvas');
+    c.width = p[0]; c.height = p[1];
+    return clip.draw(t, c.getContext('2d')).then(function () {
+      if (token !== S.token || req !== frameReq) return;
       it.time = t;
-      setSource(vcanvas);
-      if (!it.thumb) { it.thumb = thumbFrom(vcanvas); refreshThumbs(); }
+      setSource(c);
+      if (!it.thumb) { it.thumb = thumbFrom(c); refreshThumbs(); }
     });
   });
 }
