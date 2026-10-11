@@ -14,18 +14,20 @@ var VIDEO_Q = { std: 0.55, high: 1, max: 1.4 }; // keep in step with video.js
 var SLIDERS = [
   { k: 'strength', label: 'STRENGTH', min: 0, max: 100, unit: '%' },
   { k: 'warmth', label: 'WARMTH', min: -100, max: 100, signed: true },
-  { k: 'tint', label: 'TINT  GREEN ↔ MAGENTA', min: -100, max: 100, signed: true },
+  { k: 'tint', label: 'TINT G–M', title: 'Tint: green (−) to magenta (+)', min: -100, max: 100, signed: true },
   { k: 'bright', label: 'BRIGHTNESS', min: -100, max: 100, signed: true },
   { k: 'contrast', label: 'CONTRAST', min: -50, max: 100, signed: true },
   { k: 'sat', label: 'SATURATION', min: -100, max: 100, signed: true }
 ];
 
-var prefs = { settings: Object.assign({}, DEFAULTS), quality: 'high' };
+var TABS = ['balance', 'adjust', 'output', 'file'];
+var prefs = { settings: Object.assign({}, DEFAULTS), quality: 'high', tab: 'balance' };
 try {
   var saved = JSON.parse(localStorage.getItem(PREFS) || localStorage.getItem('uw-color-settings-v1') || '{}');
   var ss = saved.settings || saved;
   SLIDERS.forEach(function (s) { if (typeof ss[s.k] === 'number') prefs.settings[s.k] = clamp(ss[s.k], s.min, s.max); });
   if (JPEG_Q[saved.quality]) prefs.quality = saved.quality;
+  if (TABS.indexOf(saved.tab) >= 0) prefs.tab = saved.tab;
 } catch (e) {}
 function persist() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch (e) {} }
 
@@ -53,7 +55,8 @@ SLIDERS.forEach(function (s) {
   var wrap = document.createElement('label'); wrap.className = 'sl';
   wrap.innerHTML = '<span class="sl-top"><span>' + s.label + '</span><output></output></span><input type="range" min="' + s.min + '" max="' + s.max + '" step="1">';
   s.input = wrap.querySelector('input'); s.out = wrap.querySelector('output');
-  s.input.setAttribute('aria-label', s.label.toLowerCase());
+  s.input.setAttribute('aria-label', (s.title || s.label).toLowerCase());
+  if (s.title) wrap.title = s.title;
   s.input.addEventListener('input', function () { prefs.settings[s.k] = +s.input.value; showSlider(s); persist(); schedule(); });
   s.input.addEventListener('dblclick', function () { prefs.settings[s.k] = DEFAULTS[s.k]; syncSliders(); persist(); schedule(); });
   box.appendChild(wrap);
@@ -79,6 +82,16 @@ function syncQuality() {
 Array.prototype.forEach.call($('qualSeg').children, function (b) {
   b.onclick = function () { prefs.quality = b.dataset.q; persist(); syncQuality(); };
 });
+
+/* Tabs (phones): one panel at a time under the image */
+var tabBtns = document.querySelectorAll('.tabs button'), panes = document.querySelectorAll('.pane');
+function setTab(t) {
+  prefs.tab = t; persist();
+  Array.prototype.forEach.call(tabBtns, function (b) { var on = b.dataset.tab === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
+  Array.prototype.forEach.call(panes, function (p) { p.classList.toggle('on', p.dataset.pane === t); });
+}
+Array.prototype.forEach.call(tabBtns, function (b) { b.onclick = function () { setTab(b.dataset.tab); }; });
+setTab(prefs.tab);
 
 /* ---------- Preview pipeline ---------- */
 var raf = 0;
@@ -135,14 +148,15 @@ function clearStage() {
 }
 function layoutStage() {
   var a = $('after'); if (!a.width) return;
-  var st = $('stage'), cs = getComputedStyle(st), wide = window.innerWidth >= 980;
+  var st = $('stage'), cs = getComputedStyle(st);
   var aw = st.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-  var it = cur(), chrome = $('stage').getBoundingClientRect().top + window.scrollY + (it && it.kind === 'video' ? 46 : 0) + 38 + 24;
-  var ah = Math.max(200, wide ? window.innerHeight - chrome : window.innerHeight * 0.56);
+  var ah = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  if (aw <= 0 || ah <= 0) return;
   var sc = Math.min(aw / a.width, ah / a.height);
   a.style.width = Math.floor(a.width * sc) + 'px';
   a.style.height = Math.floor(a.height * sc) + 'px';
 }
+if (window.ResizeObserver) new window.ResizeObserver(layoutStage).observe($('stage'));
 window.addEventListener('resize', layoutStage);
 function setLoading(on) { S.loading = on; $('loading').hidden = !on; }
 function stageMsg(text) { $('stageMsg').hidden = !text; $('stageMsg').textContent = text || ''; }
@@ -160,21 +174,34 @@ function setSplit(f) {
 }
 setSplit(0.5);
 function rel(e) { var r = frame.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; }
+/*
+  Dragging always moves the before/after split. A tap sets the neutral point while white balance is
+  on TAP NEUTRAL (so it can be re-tapped as often as needed); in AUTO a tap just moves the split.
+*/
 var drag = null;
+function neutralMode() { var it = cur(); return S.picking || !!(it && pickOf(it)); }
 frame.addEventListener('pointerdown', function (e) {
-  if (!S.prevOrig || S.loading) return;
-  var p = rel(e);
-  if (S.picking) { e.preventDefault(); setPick(clamp(p[0], 0, 1), clamp(p[1], 0, 1)); return; }
-  drag = { x: e.clientX, active: e.pointerType === 'mouse' };
-  if (drag.active) { try { frame.setPointerCapture(e.pointerId); } catch (_) {} setSplit(p[0]); }
-});
-frame.addEventListener('pointermove', function (e) {
-  if (!drag) return;
-  if (!drag.active && Math.abs(e.clientX - drag.x) > 6) { drag.active = true; try { frame.setPointerCapture(e.pointerId); } catch (_) {} }
+  if (!S.prevOrig || S.loading || (drag && drag.id !== e.pointerId)) return;
+  e.preventDefault();
+  drag = { id: e.pointerId, x: e.clientX, y: e.clientY, active: e.pointerType === 'mouse' && !neutralMode() };
+  try { frame.setPointerCapture(e.pointerId); } catch (_) {}
   if (drag.active) setSplit(rel(e)[0]);
 });
-frame.addEventListener('pointerup', function (e) { if (drag && !drag.active) setSplit(rel(e)[0]); drag = null; });
+frame.addEventListener('pointermove', function (e) {
+  if (!drag || drag.id !== e.pointerId) return;
+  if (!drag.active && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 8) drag.active = true;
+  if (drag.active) setSplit(rel(e)[0]);
+});
+frame.addEventListener('pointerup', function (e) {
+  if (!drag || drag.id !== e.pointerId) return;
+  var tap = !drag.active; drag = null;
+  if (!tap) return;
+  var p = rel(e);
+  if (neutralMode()) setPick(clamp(p[0], 0, 1), clamp(p[1], 0, 1));
+  else setSplit(p[0]);
+});
 frame.addEventListener('pointercancel', function () { drag = null; });
+frame.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 frame.addEventListener('keydown', function (e) {
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setSplit(S.split + (e.key === 'ArrowLeft' ? -0.05 : 0.05)); }
 });
@@ -207,7 +234,7 @@ function updateModeUI() {
   var seg = function (id, on) { $(id).classList.toggle('on', on); $(id).setAttribute('aria-pressed', String(on)); };
   seg('autoBtn', !pick && !S.picking);
   seg('pickBtn', !!pick || S.picking);
-  $('pickBtn').textContent = S.picking ? 'TAP THE IMAGE' : pick ? 'NEUTRAL ✓' : 'TAP NEUTRAL';
+  $('pickBtn').textContent = pick ? 'NEUTRAL ✓' : 'TAP NEUTRAL';
   if (isV) {
     seg('adaptBtn', !it.lock); seg('lockBtn', !!it.lock);
     $('lockBtn').textContent = it.lock ? 'LOCKED @ ' + fmtTime(it.lock.t - (it.vinfo ? it.vinfo.start : 0)) : 'LOCK TO FRAME';
@@ -216,7 +243,11 @@ function updateModeUI() {
       : 'Re-balances continuously as depth and light change through the clip. The preview shows this frame.';
   }
   frame.classList.toggle('picking', S.picking);
-  $('hint').textContent = S.picking ? 'TAP SOMETHING WHITE OR GREY — SAND, A TANK, A FIN, A SLATE' : 'DRAG ACROSS THE IMAGE TO COMPARE';
+  var hint = $('hint');
+  hint.classList.toggle('hot', !!(S.picking || pick));
+  hint.textContent = S.picking ? 'TAP SOMETHING WHITE OR GREY: SAND, A TANK, A FIN'
+    : pick ? (isV && it.lock.t !== it.time ? 'NEUTRAL SET AT ' + fmtTime(it.lock.t - (it.vinfo ? it.vinfo.start : 0)) + ' · TAP TO SET IT HERE' : 'TAP TO MOVE THE NEUTRAL POINT · DRAG TO COMPARE')
+    : 'DRAG TO COMPARE';
   var m = $('marker'), show = !!pick && (!isV || it.lock.t === it.time);
   m.hidden = !show;
   if (show) { m.style.left = (pick.fx * 100) + '%'; m.style.top = (pick.fy * 100) + '%'; }
@@ -226,7 +257,7 @@ $('autoBtn').onclick = function () {
   if (it.kind === 'video') { if (it.lock) it.lock.pick = null; } else it.pick = null;
   S.picking = false; updateModeUI(); recompute();
 };
-$('pickBtn').onclick = function () { if (!S.prevOrig) return; S.picking = !S.picking; updateModeUI(); };
+$('pickBtn').onclick = function () { var it = cur(); if (!S.prevOrig || !it || pickOf(it)) return; S.picking = !S.picking; updateModeUI(); };
 $('adaptBtn').onclick = function () { var it = cur(); if (!it) return; it.lock = null; S.picking = false; updateModeUI(); recompute(); };
 $('lockBtn').onclick = function () {
   var it = cur(); if (!it || !S.analysis) return;
@@ -237,11 +268,15 @@ $('lockBtn').onclick = function () {
 /* ---------- Files ---------- */
 var nextId = 1;
 function isVideoFile(f) { return /^video\//.test(f.type) || /\.(mp4|mov|m4v)$/i.test(f.name); }
+var CLOUD_TIP = 'Photos and videos kept only in iCloud or Google Photos have to download to the phone first, which needs a connection.';
 function addFiles(list) {
-  var files = Array.prototype.filter.call(list || [], function (f) {
+  var all = Array.prototype.slice.call(list || []);
+  var media = all.filter(function (f) {
     return /^(image|video)\//.test(f.type) || /\.(jpe?g|png|webp|gif|avif|heic|heif|mp4|mov|m4v)$/i.test(f.name);
   });
-  if (!files.length) { toast('Choose photos or videos.'); return; }
+  var files = media.filter(function (f) { return f.size > 0; });
+  if (media.length > files.length) toast((media.length - files.length) + ' file' + (media.length - files.length > 1 ? 's' : '') + ' came through empty. ' + CLOUD_TIP);
+  if (!files.length) { if (!media.length) toast(all.length ? 'Choose photos or videos.' : 'Nothing was added. ' + CLOUD_TIP); return; }
   var first = S.items.length;
   files.forEach(function (f) {
     S.items.push({ id: nextId++, file: f, name: f.name, kind: isVideoFile(f) ? 'video' : 'image', pick: null, lock: null, time: null });
@@ -252,6 +287,8 @@ function addFiles(list) {
   if (!S.job) select(first);
 }
 $('file').addEventListener('change', function () { addFiles(this.files); this.value = ''; });
+// The system picker can fail silently offline (cloud-only media); say so instead of doing nothing.
+$('file').addEventListener('cancel', function () { if (navigator.onLine === false) toast('Nothing was added. ' + CLOUD_TIP); });
 function hasFiles(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
 ['dragenter', 'dragover'].forEach(function (t) {
   window.addEventListener(t, function (e) { if (hasFiles(e)) { e.preventDefault(); $('drop').classList.add('over'); } });
@@ -396,7 +433,10 @@ function select(i) {
   var token = ++S.token, it = S.items[i];
   S.cur = i; S.picking = false;
   refreshThumbs(); updateKindUI(); updateModeUI(); stageMsg(null);
-  if (it.btn && it.btn.scrollIntoView) it.btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (it.btn) {
+    var strip = $('strip'), l = it.btn.offsetLeft, r = l + it.btn.offsetWidth;
+    if (l < strip.scrollLeft) strip.scrollLeft = l; else if (r > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = r - strip.clientWidth;
+  }
   setLoading(true);
   var job;
   if (it.kind === 'video') {
@@ -423,7 +463,9 @@ function select(i) {
   job.then(function () { if (token === S.token) updateModeUI(); }).catch(function (e) {
     if (token !== S.token) return;
     clearStage();
-    if (it.kind === 'video') stageMsg('Can’t open this video here. ' + (e && e.message && e.message !== 'stale' ? e.message : ''));
+    var unreadable = e && /NotReadable|NotFound/.test(e.name + ' ' + e.message);
+    if (unreadable) stageMsg('Couldn’t read this file. ' + CLOUD_TIP);
+    else if (it.kind === 'video') stageMsg('Can’t open this video here. ' + (e && e.message && e.message !== 'stale' ? e.message : ''));
     else stageMsg(/\.hei[cf]$/i.test(it.name) ? 'This browser can’t open HEIC photos. Use Safari, or export the photo as JPEG.' : 'This browser can’t open that image. Try a JPEG.');
   }).then(function () {
     if (token === S.token) setLoading(false);
@@ -659,9 +701,9 @@ function toast(msg) {
 }
 
 $('drop').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
-document.querySelector('.mark').addEventListener('click', function (e) {
-  if (S.items.length && !confirm('Start over? Files you haven’t saved will be cleared.')) e.preventDefault();
-});
+// It's an app: no pinch zoom (iOS ignores user-scalable=no, so block the gestures too; CSS touch-action stops double-tap zoom).
+['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) { document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false }); });
+document.addEventListener('touchmove', function (e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 /* ---------- Install, offline, updates, launching with files ---------- */
 var deferredInstall = null;

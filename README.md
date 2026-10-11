@@ -10,7 +10,7 @@ Fixes the colour of underwater photos and GoPro video, directly on your phone or
 - **Video up to 4K60.** Re-encodes the clip with the correction applied, at the same resolution and frame rate, and copies the audio unchanged. The output is H.264 or HEVC, matching the source when the device can encode it.
   - *Adaptive* (default): re-balances as depth and light change through the clip, easing between looks so it doesn't flicker.
   - *Lock to frame*: uses one frame's balance for the whole clip.
-- **Tap neutral.** Tap sand, a tank or a white fin for an exact white balance.
+- **Tap neutral.** Tap sand, a tank or a white fin for an exact white balance. Tap again anywhere to move the point; dragging still compares before/after.
 - **Batch.** *ALL* exports every photo and video in the strip.
 - **.cube LUT** of the current correction, for Premiere, Resolve, Final Cut or LumaFusion.
 - **Easy saving.**
@@ -28,6 +28,7 @@ Fixes the colour of underwater photos and GoPro video, directly on your phone or
 ## Notes
 
 - Video needs WebCodecs: current Safari, Chrome, Edge or Firefox. HEVC (H.265) clips need a browser and device that can decode HEVC: Safari, or Chrome/Edge with hardware support. On the GoPro, H.264 is the most compatible setting.
+- Everything works offline once the app is installed. If the picker adds nothing while you're offline, the photos or videos are probably kept only in iCloud / Google Photos and have to download to the phone first, which needs a connection.
 - Keep the screen on while a video exports. The app asks the device not to sleep, but switching apps can pause the export.
 - On iPhone, picking a video from the Photos library can make iOS hand over a compressed copy. If the resolution shown is lower than what you filmed, pick the clip via **Files** instead.
 - Exports wait in the browser's private storage until you save them, so long 4K clips don't have to fit in memory. That storage is cleared the next time the app starts.

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>UW Color</title>
 <meta name="description" content="Fix underwater photos and GoPro video on your phone or computer. Full-resolution JPEG, video up to 4K60, works offline. Nothing is uploaded.">
 <meta name="theme-color" content="#000000">
@@ -19,58 +19,61 @@
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
+<div class="app">
 <header class="bar">
-  <a class="mark" href="./" aria-label="UW Color, start over">UW<i>/</i>COLOR</a>
+  <span class="mark">UW<i>/</i>COLOR</span>
   <span id="offline" class="bar-note" hidden>OFFLINE READY</span>
   <span class="bar-fill"></span>
   <button id="updateBtn" class="bar-btn hot" type="button" hidden>UPDATE</button>
   <button id="installBtn" class="bar-btn" type="button" hidden>INSTALL</button>
 </header>
 
-<main>
-  <section id="empty" class="empty">
-    <label id="drop" class="drop" for="file">
-      <span class="k">INPUT — JPG · PNG · HEIC · MP4 · MOV</span>
-      <span class="drop-h">Drop photos<br>or video.</span>
-      <span class="drop-cta">CHOOSE FILES <b>→</b></span>
-    </label>
-    <ol class="facts">
-      <li><span class="k">01</span><b>AUTO FIX</b><span>Restores the reds the water took and strips the blue-green haze.</span></li>
-      <li><span class="k">02</span><b>TAP NEUTRAL</b><span>Tap sand, a tank or a white fin for an exact white balance.</span></li>
-      <li><span class="k">03</span><b>EXPORT</b><span>Full-resolution JPEG that keeps the camera’s metadata. Video up to 4K60. .cube LUT for editors.</span></li>
-    </ol>
-    <p class="foot">Runs on this device. Nothing is uploaded.<span id="iosTip" hidden> To install: Share → Add to Home Screen.</span></p>
-  </section>
+<section id="empty" class="empty">
+  <label id="drop" class="drop" for="file">
+    <span class="k">INPUT — JPG · PNG · HEIC · MP4 · MOV</span>
+    <span class="drop-h">Drop photos<br>or video.</span>
+    <span class="drop-cta">CHOOSE FILES <b>→</b></span>
+  </label>
+  <ol class="facts">
+    <li><span class="k">01</span><b>AUTO FIX</b><span>Restores the reds the water took and strips the blue-green haze.</span></li>
+    <li><span class="k">02</span><b>TAP NEUTRAL</b><span>Tap sand, a tank or a white fin for an exact white balance.</span></li>
+    <li><span class="k">03</span><b>EXPORT</b><span>Full-resolution JPEG that keeps the camera’s metadata. Video up to 4K60. .cube LUT for editors.</span></li>
+  </ol>
+  <p class="foot">Runs on this device. Nothing is uploaded.<span id="iosTip" hidden> To install: Share → Add to Home Screen.</span></p>
+</section>
 
-  <section id="editor" class="editor" hidden>
-    <nav id="strip" class="strip" aria-label="Files"></nav>
-    <div class="work">
-      <div class="view">
-        <div id="stage" class="stage">
-          <div id="frame" class="frame" tabindex="0" role="slider" aria-label="Before and after comparison" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
-            <canvas id="after"></canvas>
-            <canvas id="before"></canvas>
-            <div id="divider" class="divider"></div>
-            <span id="tagL" class="tag l">BEFORE</span>
-            <span id="tagR" class="tag r">AFTER</span>
-            <div id="marker" class="marker" hidden></div>
-          </div>
-          <div id="loading" class="loading" hidden>LOADING</div>
-          <p id="stageMsg" class="stage-msg" hidden></p>
-        </div>
-        <div id="videoBar" class="scrub" hidden>
-          <input id="scrub" type="range" min="0" max="1000" step="1" value="0" aria-label="Video position">
-          <span id="timeLabel">0:00</span>
-        </div>
-        <p id="hint" class="hint">DRAG ACROSS THE IMAGE TO COMPARE</p>
+<section id="editor" class="editor" hidden>
+  <nav id="strip" class="strip" aria-label="Files"></nav>
+
+  <div class="view">
+    <div id="stage" class="stage">
+      <div id="frame" class="frame" tabindex="0" role="slider" aria-label="Before and after comparison" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+        <canvas id="after"></canvas>
+        <canvas id="before"></canvas>
+        <div id="divider" class="divider"></div>
+        <span id="tagL" class="tag l">BEFORE</span>
+        <span id="tagR" class="tag r">AFTER</span>
+        <div id="marker" class="marker" hidden></div>
       </div>
+      <div id="loading" class="loading" hidden>LOADING</div>
+      <p id="hint" class="hint">DRAG TO COMPARE</p>
+      <p id="stageMsg" class="stage-msg" hidden></p>
+    </div>
+    <div id="videoBar" class="scrub" hidden>
+      <input id="scrub" type="range" min="0" max="1000" step="1" value="0" aria-label="Video position">
+      <span id="timeLabel">0:00</span>
+    </div>
+  </div>
 
-      <aside id="panel" class="panel">
-        <div class="file">
-          <div class="file-top"><span id="fileName" class="fname"></span><button id="removeBtn" class="link" type="button">REMOVE</button></div>
-          <div id="fileInfo" class="finfo"></div>
-        </div>
-
+  <div class="tools">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="balance">BALANCE</button>
+      <button type="button" role="tab" data-tab="adjust">ADJUST</button>
+      <button type="button" role="tab" data-tab="output">OUTPUT</button>
+      <button type="button" role="tab" data-tab="file">FILE</button>
+    </div>
+    <div class="panes">
+      <div class="pane" data-pane="balance">
         <div class="group">
           <div class="label">WHITE BALANCE</div>
           <div class="seg">
@@ -78,7 +81,6 @@
             <button id="pickBtn" type="button">TAP NEUTRAL</button>
           </div>
         </div>
-
         <div id="modeGroup" class="group" hidden>
           <div class="label">VIDEO COLOUR</div>
           <div class="seg">
@@ -87,12 +89,16 @@
           </div>
           <p id="modeNote" class="fine"></p>
         </div>
+      </div>
 
+      <div class="pane" data-pane="adjust">
         <div class="group">
           <div class="label-row"><span class="label">ADJUST</span><button id="resetBtn" class="link" type="button">RESET</button></div>
-          <div id="sliders"></div>
+          <div id="sliders" class="sliders"></div>
         </div>
+      </div>
 
+      <div class="pane" data-pane="output">
         <div class="group">
           <div class="label">OUTPUT QUALITY</div>
           <div id="qualSeg" class="seg">
@@ -102,9 +108,14 @@
           </div>
           <p id="qualNote" class="fine"></p>
         </div>
+      </div>
 
+      <div class="pane" data-pane="file">
+        <div class="group file">
+          <div class="file-top"><span id="fileName" class="fname"></span><button id="removeBtn" class="link" type="button">REMOVE</button></div>
+          <div id="fileInfo" class="finfo"></div>
+        </div>
         <div class="group">
-          <div class="label">MORE</div>
           <div class="pair">
             <button id="frameBtn" class="btn" type="button" hidden>SAVE FRAME</button>
             <button id="lutBtn" class="btn" type="button">.CUBE LUT</button>
@@ -115,15 +126,16 @@
             <button id="folderBtn" class="link" type="button">CHOOSE FOLDER</button>
           </div>
         </div>
-
-        <div class="go">
-          <button id="saveBtn" class="btn primary" type="button">SAVE PHOTO</button>
-          <button id="allBtn" class="btn" type="button" hidden>EXPORT ALL</button>
-        </div>
-      </aside>
+      </div>
     </div>
-  </section>
-</main>
+  </div>
+
+  <div class="go">
+    <button id="saveBtn" class="btn primary" type="button">SAVE PHOTO</button>
+    <button id="allBtn" class="btn" type="button" hidden>ALL</button>
+  </div>
+</section>
+</div>
 
 <input type="file" id="file" class="sr-only" accept="image/*,video/*,.jpg,.jpeg,.png,.heic,.heif,.mp4,.mov" multiple tabindex="-1">
 
