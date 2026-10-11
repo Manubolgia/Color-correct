@@ -33,7 +33,7 @@ function persist() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); }
 
 var S = {
   items: [], cur: -1, prevOrig: null, outImg: null, analysis: null, params: null, split: 0.5, picking: false,
-  token: 0, loading: false, job: null, clipP: null, clipItem: null, offered: null
+  token: 0, loading: false, job: null, clipP: null, clipItem: null, offered: null, selecting: false, sel: new Set()
 };
 function cur() { return S.items[S.cur]; }
 function closeSrc(src) { if (src && typeof src.close === 'function') src.close(); }
@@ -315,10 +315,16 @@ function decode(file) {
 function buildStrip() {
   var strip = $('strip'); strip.innerHTML = '';
   S.items.forEach(function (it, i) {
-    var b = document.createElement('button');
-    b.type = 'button'; b.className = 'thumb'; b.setAttribute('aria-label', it.name);
-    b.innerHTML = '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>';
-    b.onclick = function () { if (!S.job && i !== S.cur) select(i); };
+    var b = document.createElement('div');
+    b.className = 'thumb'; b.tabIndex = 0; b.setAttribute('role', 'button'); b.setAttribute('aria-label', it.name);
+    b.innerHTML = '<span class="n">' + String(i + 1).padStart(2, '0') + '</span><button type="button" class="x" aria-label="Remove ' + it.name.replace(/"/g, '') + '">×</button>';
+    var open = function () {
+      if (S.job) return;
+      if (S.selecting) toggleSel(it); else if (i !== S.cur) select(i);
+    };
+    b.onclick = open;
+    b.onkeydown = function (e) { if (e.target === b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } };
+    b.querySelector('.x').onclick = function (e) { e.stopPropagation(); removeItems([it]); };
     it.btn = b; strip.appendChild(b);
   });
   var add = document.createElement('button');
@@ -333,6 +339,7 @@ function refreshThumbs() {
     it.btn.classList.toggle('on', i === S.cur);
     it.btn.classList.toggle('vid', it.kind === 'video');
     it.btn.classList.toggle('done', !!it.done);
+    it.btn.classList.toggle('picked', S.sel.has(it));
     if (it.thumb) it.btn.style.backgroundImage = 'url("' + it.thumb + '")';
   });
 }
@@ -379,8 +386,8 @@ function updateKindUI() {
   $('frameBtn').hidden = !isV;
   $('modeGroup').hidden = !isV;
   $('videoBar').hidden = !isV;
-  $('allBtn').hidden = S.items.length < 2;
   $('allBtn').textContent = 'ALL ' + S.items.length;
+  updateSelectUI();
   $('folderRow').hidden = !store.canPickFolder;
   var note;
   if (isV) {
@@ -500,14 +507,73 @@ $('scrub').addEventListener('input', function () {
   scrubTo(t);
 });
 
-$('removeBtn').onclick = function () {
-  if (S.job) return;
-  var i = S.cur; if (i < 0) return;
-  if (S.items[i] === S.clipItem) closeClip();
-  S.items.splice(i, 1);
-  if (!S.items.length) { S.cur = -1; clearStage(); $('editor').hidden = true; $('empty').hidden = false; return; }
+/* ---------- Removing files (× on the current thumbnail, or SELECT for several), with undo ---------- */
+var lastRemoved = null;
+function showItems(prevCur, fallbackIndex) {
+  if (!S.items.length) {
+    ++S.token; S.cur = -1; S.picking = false; setSelecting(false); clearStage(); closeClip(); $('strip').innerHTML = '';
+    $('editor').hidden = true; $('empty').hidden = false;
+    return;
+  }
+  $('empty').hidden = true; $('editor').hidden = false;
   buildStrip();
-  select(Math.min(i, S.items.length - 1));
+  var i = S.items.indexOf(prevCur);
+  if (i >= 0) { S.cur = i; refreshThumbs(); updateKindUI(); }
+  else select(clamp(fallbackIndex, 0, S.items.length - 1));
+}
+function removeItems(list) {
+  if (S.job || !list.length) return;
+  var prevCur = cur();
+  var removed = list.map(function (it) { return { it: it, i: S.items.indexOf(it) }; }).filter(function (r) { return r.i >= 0; })
+    .sort(function (a, b) { return a.i - b.i; });
+  if (!removed.length) return;
+  if (list.indexOf(S.clipItem) >= 0) closeClip();
+  S.items = S.items.filter(function (it) { return list.indexOf(it) < 0; });
+  list.forEach(function (it) { S.sel.delete(it); });
+  lastRemoved = { items: removed, cur: prevCur };
+  showItems(prevCur, removed[0].i);
+  updateSelectUI();
+  toast(removed.length === 1 ? 'Removed ' + removed[0].it.name : 'Removed ' + removed.length + ' files', { label: 'UNDO', fn: undoRemove });
+}
+function undoRemove() {
+  if (!lastRemoved || S.job) return;
+  var r = lastRemoved, now = cur(); lastRemoved = null;
+  r.items.forEach(function (x) { S.items.splice(Math.min(x.i, S.items.length), 0, x.it); });
+  // go back to whatever was on screen before the removal
+  var back = S.items.indexOf(r.cur) >= 0 ? r.cur : now;
+  if (back === now) showItems(now, S.items.indexOf(now));
+  else showItems(null, S.items.indexOf(back));
+}
+$('removeBtn').onclick = function () { var it = cur(); if (it) removeItems([it]); };
+
+function setSelecting(on) {
+  S.selecting = on && S.items.length > 0;
+  if (!S.selecting) S.sel.clear();
+  $('editor').classList.toggle('selecting', S.selecting);
+  updateSelectUI();
+}
+function toggleSel(it) { if (S.sel.has(it)) S.sel.delete(it); else S.sel.add(it); updateSelectUI(); }
+function updateSelectUI() {
+  var on = S.selecting, n = S.sel.size;
+  $('selectBtn').hidden = S.items.length < 2 && !on;
+  $('selectBtn').textContent = on ? 'DONE' : 'SELECT';
+  $('saveBtn').hidden = on;
+  $('allBtn').hidden = on || S.items.length < 2;
+  $('delBtn').hidden = !on; $('selAllBtn').hidden = !on;
+  $('delBtn').disabled = !n;
+  $('delBtn').textContent = n ? 'DELETE ' + n : 'TAP FILES TO DELETE';
+  $('selAllBtn').textContent = n === S.items.length ? 'NONE' : 'ALL';
+  refreshThumbs();
+}
+$('selectBtn').onclick = function () { if (!S.job) setSelecting(!S.selecting); };
+$('selAllBtn').onclick = function () {
+  if (S.sel.size === S.items.length) S.sel.clear(); else S.items.forEach(function (it) { S.sel.add(it); });
+  updateSelectUI();
+};
+$('delBtn').onclick = function () {
+  var list = S.items.filter(function (it) { return S.sel.has(it); });
+  setSelecting(false);
+  removeItems(list);
 };
 
 /* ---------- Export tasks ---------- */
@@ -598,7 +664,8 @@ window.addEventListener('beforeunload', function (e) { if (S.job) { e.preventDef
 
 function setBusyUI(on) {
   $('editor').classList.toggle('busy', on);
-  ['saveBtn', 'frameBtn', 'allBtn', 'lutBtn', 'removeBtn'].forEach(function (id) { $(id).disabled = on; });
+  if (on) setSelecting(false);
+  ['saveBtn', 'frameBtn', 'allBtn', 'lutBtn', 'removeBtn', 'selectBtn'].forEach(function (id) { $(id).disabled = on; });
   if (!on) updateKindUI();
 }
 
@@ -691,13 +758,20 @@ updateFolderUI();
 document.addEventListener('keydown', function (e) {
   if (e.key !== 'Escape') return;
   if (!$('sheet').hidden) closeSheet();
+  else if (S.selecting) setSelecting(false);
   else if (S.picking) { S.picking = false; updateModeUI(); }
 });
 
 var toastTimer = 0;
-function toast(msg) {
-  var t = $('toast'); t.textContent = msg; t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, Math.min(9000, 3000 + msg.length * 40));
+function toast(msg, action) {
+  var t = $('toast'); t.textContent = ''; t.hidden = false;
+  var span = document.createElement('span'); span.textContent = msg; t.appendChild(span);
+  if (action) {
+    var b = document.createElement('button'); b.type = 'button'; b.textContent = action.label;
+    b.onclick = function () { t.hidden = true; action.fn(); };
+    t.appendChild(b);
+  }
+  clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, action ? 6000 : Math.min(9000, 3000 + msg.length * 40));
 }
 
 $('drop').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });

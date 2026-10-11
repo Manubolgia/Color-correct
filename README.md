@@ -11,7 +11,7 @@ Fixes the colour of underwater photos and GoPro video, directly on your phone or
   - *Adaptive* (default): re-balances as depth and light change through the clip, easing between looks so it doesn't flicker.
   - *Lock to frame*: uses one frame's balance for the whole clip.
 - **Tap neutral.** Tap sand, a tank or a white fin for an exact white balance. Tap again anywhere to move the point; dragging still compares before/after.
-- **Batch.** *ALL* exports every photo and video in the strip.
+- **Batch.** *ALL* exports every photo and video in the strip. Drop the ones you don't want with the × on the current thumbnail, or *SELECT* → tap several → *DELETE* (with *UNDO*).
 - **.cube LUT** of the current correction, for Premiere, Resolve, Final Cut or LumaFusion.
 - **Easy saving.**
   - iPhone/Android: *SAVE / SHARE* opens the share sheet (choose “Save Image” / “Save Video” to put it in Photos).

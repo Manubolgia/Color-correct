@@ -21,7 +21,7 @@
 <body>
 <div class="app">
 <header class="bar">
-  <span class="mark">UW<i>/</i>COLOR</span>
+  <span class="mark"><svg class="logo" viewBox="0 0 512 512" aria-hidden="true"><rect width="256" height="512" fill="#0e5e63"/><rect x="256" width="256" height="512" fill="#ff3b00"/><rect x="242" width="28" height="512" fill="#fff"/><rect x="172" y="172" width="168" height="168" fill="#fff" stroke="#000" stroke-width="16"/><path d="M240 208 192 256 240 304zM272 208 320 256 272 304z"/></svg><span>UW<i>/</i>COLOR</span></span>
   <span id="offline" class="bar-note" hidden>OFFLINE READY</span>
   <span class="bar-fill"></span>
   <button id="updateBtn" class="bar-btn hot" type="button" hidden>UPDATE</button>
@@ -43,7 +43,10 @@
 </section>
 
 <section id="editor" class="editor" hidden>
-  <nav id="strip" class="strip" aria-label="Files"></nav>
+  <div class="stripbar">
+    <nav id="strip" class="strip" aria-label="Files"></nav>
+    <button id="selectBtn" class="strip-btn" type="button" hidden>SELECT</button>
+  </div>
 
   <div class="view">
     <div id="stage" class="stage">
@@ -133,6 +136,8 @@
   <div class="go">
     <button id="saveBtn" class="btn primary" type="button">SAVE PHOTO</button>
     <button id="allBtn" class="btn" type="button" hidden>ALL</button>
+    <button id="delBtn" class="btn danger" type="button" hidden>DELETE</button>
+    <button id="selAllBtn" class="btn" type="button" hidden>ALL</button>
   </div>
 </section>
 </div>
