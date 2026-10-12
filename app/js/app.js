@@ -402,7 +402,7 @@ function updateKindUI() {
   $('qualNote').textContent = note;
   $('saveBtn').disabled = isV && !videoSupport;
 }
-var videoSupport = typeof VideoEncoder !== 'undefined' && typeof VideoDecoder !== 'undefined';
+var videoSupport = typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined';
 
 /* ---------- Selecting an item ---------- */
 function openClip(it) {
@@ -603,7 +603,7 @@ function videoTask(it) {
         settings: settings, locked: locked, quality: quality, name: stem(it.name) + '_fixed.mp4', signal: signal,
         onStart: function (o) {
           sub = o.width + '×' + o.height + ' · ' + Math.round(o.fps * 100) / 100 + ' FPS → ' + codecLabel(o.codec) + ' ' + Math.round(o.bitrate / 1e6) + ' Mb/s' +
-            (o.width !== o.srcWidth ? ' (device limit)' : '') + (o.gpu ? '' : ' · CPU');
+            (o.width !== o.srcWidth ? ' (device limit)' : '') + (o.gpu ? '' : ' · CPU') + (o.via === 'element' ? ' · PLAYER DECODE' : '');
           progress(0, sub);
         },
         onProgress: function (f) { progress(f, sub); }

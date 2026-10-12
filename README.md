@@ -27,7 +27,7 @@ Fixes the colour of underwater photos and GoPro video, directly on your phone or
 
 ## Notes
 
-- Video needs WebCodecs: current Safari, Chrome, Edge or Firefox. HEVC (H.265) clips need a browser and device that can decode HEVC: Safari, or Chrome/Edge with hardware support. On the GoPro, H.264 is the most compatible setting.
+- Video export needs WebCodecs: current Safari, Chrome, Edge or Firefox. If the browser's WebCodecs decoder refuses a clip (Safari does this for some H.264/HEVC files it can play fine), the app first retries with a cleaned-up decoder setup, then falls back to the browser's own video player and takes each frame from it. Export through that fallback can be slower, but every frame still matches the source exactly. HEVC (H.265) clips need a browser and device that can play HEVC: Safari, or Chrome/Edge with hardware support.
 - Everything works offline once the app is installed. If the picker adds nothing while you're offline, the photos or videos are probably kept only in iCloud / Google Photos and have to download to the phone first, which needs a connection.
 - Keep the screen on while a video exports. The app asks the device not to sleep, but switching apps can pause the export.
 - On iPhone, picking a video from the Photos library can make iOS hand over a compressed copy. If the resolution shown is lower than what you filmed, pick the clip via **Files** instead.
@@ -38,7 +38,7 @@ Fixes the colour of underwater photos and GoPro video, directly on your phone or
 All processing happens in the page:
 
 - **Photos.** The image is read in horizontal strips. Each strip is colour-corrected and JPEG-encoded by a pool of Web Workers (`app/js/jpeg.js`). Restart markers make the strips independent, so they're encoded in parallel and simply concatenated. Because of this, no canvas ever has to hold the whole photo, which gets around iOS's ~16.7 MP canvas limit.
-- **Video.** Clips are decoded and encoded with WebCodecs through [Mediabunny](https://github.com/Vanilagy/mediabunny) (MPL-2.0, vendored in `app/vendor/`). The correction runs as a WebGL2 shader (`app/js/gl.js`). The MP4 is streamed to disk (the origin-private file system) as it's written.
+- **Video.** Clips are decoded and encoded with WebCodecs through [Mediabunny](https://github.com/Vanilagy/mediabunny) (MPL-2.0, vendored in `app/vendor/`). If the decoder refuses a clip, the app falls back to a patched decoder config, then to the browser's `<video>` player, taking one exact seek per frame; see `app/js/video.js`. The correction runs as a WebGL2 shader (`app/js/gl.js`). The MP4 is streamed to disk (the origin-private file system) as it's written.
 - **Colour science** lives in `app/js/color.js`, which the photo path, the video shader and the LUT export share.
 
 ## Development
