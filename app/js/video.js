@@ -120,6 +120,9 @@ registerDecoder(PatchedDecoder);
 /* Whether WebCodecs can decode this track, as is or with a patched config. Returns a short reason when it can't. */
 var FORCE = (function () { try { return localStorage.getItem('uw-force-decoder'); } catch (e) { return null; } })(); // testing aid: 'patched' | 'element'
 async function webCodecsDecodable(track) {
+  try { return await checkDecodable(track); } catch (e) { return { ok: false, why: String(e && e.message || e) }; }
+}
+async function checkDecodable(track) {
   if (typeof VideoDecoder === 'undefined') return { ok: false, why: 'no VideoDecoder' };
   var cfg = await track.getDecoderConfig();
   if (!cfg) return { ok: false, why: 'unknown codec' };
@@ -149,21 +152,26 @@ function loadElement(file) {
         v.remove(); URL.revokeObjectURL(url);
       }
     };
-    var fail = function () { if (done) return; done = true; api.dispose(); reject(new Error('The built-in player can’t open this file either.')); };
+    var timer = 0;
+    var fail = function () { if (done) return; done = true; clearTimeout(timer); api.dispose(); reject(new Error('The built-in player can’t open this file either.')); };
+    var ready = function () {
+      if (done || v.readyState < 2 || !v.videoWidth) return;
+      done = true; clearTimeout(timer); resolve(api);
+    };
     v.addEventListener('error', fail, { once: true });
-    setTimeout(fail, 20000);
-    v.addEventListener('loadeddata', function () {
-      if (done) return;
+    timer = setTimeout(fail, 30000);
+    ['loadeddata', 'canplay', 'seeked'].forEach(function (t) { v.addEventListener(t, ready); });
+    v.addEventListener('loadedmetadata', function () {
       if (!v.videoWidth) { fail(); return; }
-      // iOS only paints frames into canvases once playback has started at least once.
+      // iOS loads and paints picture data only once playback has started, and refuses play() in
+      // Low Power Mode, so start it briefly and also nudge it with a seek.
+      var after = function () { v.pause(); if (v.readyState < 2) v.currentTime = Math.min(0.001, v.duration || 0); ready(); };
       var p = v.play();
-      (p && p.then ? p.then(function () { v.pause(); }, function () {}) : Promise.resolve()).then(function () {
-        if (done) return;
-        done = true; resolve(api);
-      });
+      if (p && p.then) p.then(after, after); else after();
     }, { once: true });
     document.body.appendChild(v);
     v.src = url;
+    v.load();
   });
 }
 
@@ -188,15 +196,19 @@ function seekEl(v, t) {
 export async function openVideo(file) {
   var input = new Input({ source: new BlobSource(file), formats: FORMATS });
   try {
-    var track = await input.getPrimaryVideoTrack();
-    if (!track) throw new Error('This file has no video track.');
-    var r = await Promise.all([
-      track.getDisplayWidth(), track.getDisplayHeight(), track.getCodec(),
-      track.getFirstTimestamp(), input.computeDuration(), track.computePacketStats(240), track.hasHighDynamicRange()
-    ]);
-    var info = { width: r[0], height: r[1], codec: r[2], start: Math.max(0, r[3]), end: r[4], fps: r[5].averagePacketRate, bitrate: r[5].averageBitrate, hdr: r[6], via: 'webcodecs' };
-
-    var dec = await webCodecsDecodable(track);
+    var track = null, dec = { ok: false, why: '' };
+    var info = { width: 0, height: 0, codec: null, start: 0, end: 0, fps: 0, bitrate: 0, hdr: false, via: 'webcodecs' };
+    try { track = await input.getPrimaryVideoTrack(); } catch (e) { dec.why = String(e && e.message || e); }
+    if (!track && !dec.why) throw new Error('This file has no video track.');
+    if (track) {
+      var safe = function (p, d) { return Promise.resolve(p).then(null, function () { return d; }); };
+      var r = await Promise.all([
+        safe(track.getDisplayWidth(), 0), safe(track.getDisplayHeight(), 0), safe(track.getCodec(), null),
+        safe(track.getFirstTimestamp(), 0), safe(input.computeDuration(), 0), safe(track.computePacketStats(240), {}), safe(track.hasHighDynamicRange(), false)
+      ]);
+      info = { width: r[0], height: r[1], codec: r[2], start: Math.max(0, r[3]), end: r[4], fps: r[5].averagePacketRate || 0, bitrate: r[5].averageBitrate || 0, hdr: r[6], via: 'webcodecs' };
+      dec = await webCodecsDecodable(track);
+    }
     if (dec.ok) {
       try {
         var sink = new VideoSampleSink(track);
@@ -225,6 +237,7 @@ export async function openVideo(file) {
     var v = el.el;
     info.width = v.videoWidth; info.height = v.videoHeight;
     info.start = 0; info.end = isFinite(v.duration) && v.duration > 0 ? v.duration : info.end;
+    if (!info.fps) info.fps = 30;
     info.via = 'element';
     var busy = Promise.resolve();
     return {

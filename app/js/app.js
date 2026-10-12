@@ -801,6 +801,8 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   navigator.serviceWorker.register('sw.js').then(function (reg) {
     var offerUpdate = function (w) {
       if (!w || !navigator.serviceWorker.controller) return;
+      // Nothing open: switch to the new version straight away. Otherwise let the user pick the moment.
+      if (!S.items.length && !S.job) { wantUpdate = true; w.postMessage('skipWaiting'); return; }
       $('updateBtn').hidden = false;
       $('updateBtn').onclick = function () {
         if (S.job) { toast('Finish or cancel the export first.'); return; }
@@ -813,6 +815,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
       w.addEventListener('statechange', function () { if (w.state === 'installed') offerUpdate(w); });
     });
     setInterval(function () { reg.update().catch(function () {}); }, 3600000);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') reg.update().catch(function () {}); });
   }).catch(function () {});
 }
 
