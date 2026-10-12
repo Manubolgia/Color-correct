@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { copyFileSync, readFileSync } from 'fs';
 
 const entry = `export {
-  Input, Output, Conversion, BlobSource, StreamTarget, Mp4OutputFormat, MP4, QTFF, Quality,
+  Input, Output, BlobSource, StreamTarget, Mp4OutputFormat, MP4, QTFF, Quality,
   VideoSampleSink, getFirstEncodableVideoCodec,
   CustomVideoDecoder, registerDecoder, VideoSample, EncodedPacketSink, EncodedAudioPacketSource, VideoSampleSource
 } from 'mediabunny';`;

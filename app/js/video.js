@@ -9,10 +9,11 @@
      variants are tried and the first one Safari accepts is used (PatchedDecoder below).
   3. The browser's own <video> player, which plays anything the Photos app can. Each frame is taken
      by seeking to it, which is exact.
-  Encoding is always WebCodecs, and the audio is copied over untouched.
+  Encoding is always WebCodecs, paced so the encoder never skips frames (see makePacer), and the
+  audio is copied over untouched. Every source frame becomes exactly one output frame.
 */
 import {
-  Input, Output, Conversion, BlobSource, StreamTarget, Mp4OutputFormat, MP4, QTFF, Quality,
+  Input, Output, BlobSource, StreamTarget, Mp4OutputFormat, MP4, QTFF, Quality,
   VideoSampleSink, getFirstEncodableVideoCodec,
   CustomVideoDecoder, registerDecoder, VideoSample, EncodedPacketSink, EncodedAudioPacketSource, VideoSampleSource
 } from '../vendor/mediabunny.js';
@@ -321,6 +322,116 @@ async function encodePlan(srcCodec, W, H, fps, srcBitrate, quality) {
   throw new Error('This browser can’t encode video.');
 }
 
+/* Presentation times of every frame in the file, read from the container (cheap: no decoding). */
+async function frameTimes(track) {
+  var times = [];
+  for await (var p of new EncodedPacketSink(track).packets(undefined, undefined, { metadataOnly: true })) times.push(p.timestamp);
+  times.sort(function (a, b) { return a - b; });
+  if (!times.length) throw new Error('This video has no frames.');
+  return times;
+}
+function frameRateOf(times) {
+  if (times.length < 2) return 30;
+  var d = [];
+  for (var i = 1; i < times.length; i++) d.push(times[i] - times[i - 1]);
+  d.sort(function (a, b) { return a - b; });
+  var med = d[d.length >> 1];
+  return med > 0 ? 1 / med : 30;
+}
+function countUpTo(times, t) { // number of frames starting at or before t
+  var lo = 0, hi = times.length;
+  while (lo < hi) { var mid = (lo + hi) >> 1; if (times[mid] <= t + 1e-6) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
+/*
+  Keeps the encoder from being handed frames faster than it finishes them. Safari's hardware encoders
+  behave like video-call encoders and silently skip frames that arrive while they're busy: at 4K 8:7
+  that turned a 60 fps clip into 15 fps. So each frame waits until the previous ones have come out.
+  An encoder that holds frames back on purpose (no output until several have gone in) shows up as a
+  long wait with no output; then more frames are allowed in flight, unless `strict`.
+*/
+function makePacer(strict) {
+  var sent = 0, done = 0, ahead = 0, wake = null;
+  var tick = function () { if (wake) { var w = wake; wake = null; w(); } };
+  return {
+    packet: function () { done++; tick(); },
+    wait: async function () {
+      var since = performance.now(), seen = done;
+      while (sent - done > ahead) {
+        await new Promise(function (r) { wake = r; setTimeout(r, 50); });
+        if (done !== seen) { seen = done; since = performance.now(); continue; }
+        if (!strict && performance.now() - since > (done ? 1500 : 4000)) { ahead = Math.min(16, ahead * 2 + 2); since = performance.now(); }
+      }
+      sent++;
+    },
+    dropped: function () { return sent - done; }
+  };
+}
+
+/* Output file with the video track and the source's audio copied packet for packet. */
+async function openOutput(input, o, plan, fps, pacer) {
+  var sink = await createSink(o.name, 'video/mp4'), output = null;
+  try {
+    output = new Output({
+      format: new Mp4OutputFormat({ fastStart: false }),
+      target: new StreamTarget(sink.stream, { chunked: true, chunkSize: 16 * 1024 * 1024 })
+    });
+    var vsrc = new VideoSampleSource({
+      codec: plan.codec, quality: new Quality({ bitrate: plan.bitrate }), keyFrameInterval: 1,
+      latencyMode: 'quality', // WebCodecs: "must not drop frames" in this mode
+      sizeChangeBehavior: 'fill', onEncodedPacket: function () { pacer.packet(); }
+    });
+    output.addVideoTrack(vsrc, { frameRate: fps });
+    var atrack = null, acodec = null, asrc = null;
+    try { atrack = await input.getPrimaryAudioTrack(); acodec = atrack ? await atrack.getCodec() : null; } catch (e) { atrack = null; }
+    if (acodec) { asrc = new EncodedAudioPacketSource(acodec); output.addAudioTrack(asrc); }
+    await output.start();
+    var stopAudio = false;
+    var audioDone = (async function () {
+      if (!asrc) return;
+      var cfg = await atrack.getDecoderConfig(), first = true;
+      for await (var p of new EncodedPacketSink(atrack).packets()) {
+        if (stopAudio) return;
+        if (p.timestamp < 0) continue; // encoder priming before the start of the clip
+        await asrc.add(p, first && cfg ? { decoderConfig: cfg } : undefined);
+        first = false;
+      }
+      asrc.close();
+    })();
+    audioDone.catch(function () {});
+    return {
+      vsrc: vsrc,
+      finish: async function () {
+        vsrc.close();
+        await audioDone;
+        await output.finalize();
+        output = null;
+        var file = await sink.finish();
+        sink = null;
+        return file;
+      },
+      cancel: async function () {
+        stopAudio = true;
+        if (output) { try { await output.cancel(); } catch (e) {} output = null; }
+        if (sink) { await sink.abort(); sink = null; }
+      }
+    };
+  } catch (e) {
+    if (output) { try { await output.cancel(); } catch (_) {} }
+    await sink.abort();
+    throw e;
+  }
+}
+
+function newRenderer() {
+  var r = null;
+  try { r = createGLRenderer(); } catch (e) { r = null; }
+  return r || createCPURenderer();
+}
+
+function codedError(message, code) { var e = new Error(message); e.code = code; return e; }
+
 /*
   Export a corrected copy of the clip. Options:
     settings      slider values
@@ -330,24 +441,31 @@ async function encodePlan(srcCodec, W, H, fps, srcBitrate, quality) {
     onStart(info) called once the output format is known
     onProgress(fraction)
     signal        AbortSignal
-  Resolves to a File.
+  Every source frame becomes exactly one output frame with its original timestamp. Resolves to a File.
 */
 export async function exportVideo(file, o) {
   if (typeof VideoEncoder === 'undefined') throw new Error('Video export needs a browser with WebCodecs.');
-  var input = new Input({ source: new BlobSource(file), formats: FORMATS }), firstError = null;
+  var input = new Input({ source: new BlobSource(file), formats: FORMATS }), firstError = null, strict = false;
+  var isAbort = function () { return o.signal && o.signal.aborted; };
   try {
     var track = await input.getPrimaryVideoTrack();
     if (!track) throw new Error('This file has no video track.');
+    var times = await frameTimes(track);
     var dec = await webCodecsDecodable(track);
     if (dec.ok) {
-      try { return await exportWithWebCodecs(input, track, o); } catch (e) {
-        if (o.signal && o.signal.aborted) throw aborted();
-        firstError = e; // decoding may still fail late on some devices; try the built-in player before giving up
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try { return await exportWithWebCodecs(input, track, times, o, strict); } catch (e) {
+          if (isAbort()) throw aborted();
+          if (e.code === 'dropped' && !strict) { strict = true; continue; } // encoder skipped frames: again, one frame at a time
+          firstError = e; // e.g. the decoder skipped frames or failed late: the built-in player is exact
+          break;
+        }
       }
     }
-    try { return await exportWithElement(file, input, track, o); } catch (e) {
-      if (o.signal && o.signal.aborted) throw aborted();
-      if (firstError) throw firstError;
+    try { return await exportWithElement(file, input, track, times, o, strict); } catch (e) {
+      if (isAbort()) throw aborted();
+      if (e.code === 'dropped' && !strict) return await exportWithElement(file, input, track, times, o, true);
+      if (firstError && firstError.code !== 'skipped') throw firstError;
       if (/built-in player/.test(e.message)) throw undecodable(await track.getCodec(), dec.why);
       throw e;
     }
@@ -356,145 +474,98 @@ export async function exportVideo(file, o) {
   }
 }
 
-async function exportWithWebCodecs(input, track, o) {
-  var renderer = null, sink = null, conversion = null, onAbort = null;
+async function exportWithWebCodecs(input, track, times, o, strict) {
+  var renderer = null, out = null, N = times.length;
   try {
     var srcCodec = await track.getCodec();
     var W = await track.getDisplayWidth(), H = await track.getDisplayHeight();
-    var stats = await track.computePacketStats(300), fps = stats.averagePacketRate || 30;
+    var turned = (await track.getRotation()) !== 0 || (await track.getFlip());
+    var stats = await track.computePacketStats(300), fps = frameRateOf(times);
     var plan = await encodePlan(srcCodec, W, H, fps, stats.averageBitrate, o.quality);
-
-    try { renderer = createGLRenderer(); } catch (e) { renderer = null; }
-    if (!renderer) renderer = createCPURenderer();
-    var correct = corrector(renderer, o);
-
-    sink = await createSink(o.name, 'video/mp4');
-    var output = new Output({
-      format: new Mp4OutputFormat({ fastStart: false }),
-      target: new StreamTarget(sink.stream, { chunked: true, chunkSize: 16 * 1024 * 1024 })
-    });
-
-    var process = function (sample) {
-      var frame = sample.toVideoFrame();
-      try { renderer.upload(frame, frame.displayWidth, frame.displayHeight); } finally { frame.close(); }
-      return correct(sample.timestamp);
-    };
-
-    var video = { codec: plan.codec, quality: new Quality({ bitrate: plan.bitrate }), keyFrameInterval: 1, forceTranscode: true, process: process };
-    if (plan.width !== W) { video.width = plan.width; video.height = plan.height; video.fit = 'fill'; }
-    conversion = await Conversion.init({ input: input, output: output, tracks: 'primary', video: video, showWarnings: false });
-    if (!conversion.isValid || conversion.discardedTracks.some(function (d) { return d.track.type === 'video'; })) {
-      var why = conversion.discardedTracks.map(function (d) { return d.reason; }).join(', ');
-      throw new Error('This video can’t be converted here' + (why ? ' (' + why + ')' : '') + '.');
-    }
+    renderer = newRenderer();
+    var correct = corrector(renderer, o), pacer = makePacer(strict);
+    out = await openOutput(input, o, plan, fps, pacer);
     if (o.onStart) o.onStart({ width: plan.width, height: plan.height, srcWidth: W, srcHeight: H, fps: fps, codec: plan.codec, bitrate: plan.bitrate, gpu: renderer.kind === 'gpu', via: 'webcodecs' });
-    conversion.onProgress = function (f) { if (o.onProgress) o.onProgress(f); };
-    if (o.signal) {
-      if (o.signal.aborted) throw aborted();
-      onAbort = function () { conversion.cancel(); };
-      o.signal.addEventListener('abort', onAbort);
+
+    // Rotated clips (phones held upright) are drawn upright first, so the output needs no rotation flag.
+    var upright = null, uctx = null;
+    if (turned) { upright = document.createElement('canvas'); upright.width = plan.width; upright.height = plan.height; uctx = upright.getContext('2d'); }
+
+    var decoded = 0, last = -Infinity;
+    for await (var sample of new VideoSampleSink(track).samples()) {
+      try {
+        if (o.signal && o.signal.aborted) throw aborted();
+        var t = sample.timestamp;
+        if (t < 0 || t <= last) continue; // not shown / repeated
+        last = t;
+        decoded++;
+        // The decoder must hand over every frame the file has; if it skips some, the built-in player route is used.
+        var expected = countUpTo(times, t);
+        if (expected - decoded > Math.max(10, expected * 0.02)) throw codedError('The decoder skipped frames.', 'skipped');
+        if (turned) {
+          sample.drawWithFit(uctx, { fit: 'fill' });
+          renderer.upload(upright, plan.width, plan.height);
+        } else {
+          var frame = sample.toVideoFrame();
+          try { renderer.upload(frame, plan.width, plan.height); } finally { frame.close(); }
+        }
+        var canvas = correct(t);
+        await pacer.wait();
+        var outSample = new VideoSample(canvas, { timestamp: t, duration: sample.duration > 0 ? sample.duration : 1 / fps });
+        try { await out.vsrc.add(outSample); } finally { outSample.close(); }
+        if (o.onProgress) o.onProgress(Math.min(0.99, decoded / N));
+      } finally {
+        sample.close();
+      }
     }
-    await conversion.execute();
-    var out = await sink.finish();
-    sink = null;
-    return out;
+    if (N - decoded > Math.max(10, N * 0.02)) throw codedError('The decoder skipped frames.', 'skipped');
+    var file = await out.finish();
+    out = null;
+    if (pacer.dropped() > 0) throw codedError('The encoder skipped ' + pacer.dropped() + ' frames.', 'dropped');
+    if (o.onProgress) o.onProgress(1);
+    return file;
   } finally {
-    if (onAbort) o.signal.removeEventListener('abort', onAbort);
-    if (sink) sink.abort();
+    if (out) await out.cancel();
     if (renderer) renderer.dispose();
   }
 }
 
 /*
-  Built-in player route. Frame times come from the file itself (Mediabunny can still read the
-  container), the player supplies the pictures, and every source frame gets exactly one output
-  frame with its original timestamp, so the copied audio stays in sync.
+  Built-in player route. Frame times come from the file itself, the player supplies the pictures (one
+  exact seek per frame: during playback the element may already show a newer picture than the one it
+  reports, which would make the output judder), and every source frame gets exactly one output frame.
 */
-async function exportWithElement(file, input, track, o) {
-  var el = await loadElement(file), renderer = null, sink = null, output = null, onAbort = null;
+async function exportWithElement(file, input, track, times, o, strict) {
+  var el = await loadElement(file), renderer = null, out = null, N = times.length, t0 = times[0];
   try {
     var v = el.el, W = v.videoWidth, H = v.videoHeight;
     var srcCodec = await track.getCodec();
-    var stats = await track.computePacketStats(300), fps = stats.averagePacketRate || 30;
+    var stats = await track.computePacketStats(300), fps = frameRateOf(times);
     var plan = await encodePlan(srcCodec, W, H, fps, stats.averageBitrate, o.quality);
-
-    var times = [];
-    for await (var pk of new EncodedPacketSink(track).packets(undefined, undefined, { metadataOnly: true })) times.push(pk.timestamp);
-    times.sort(function (a, b) { return a - b; });
-    if (!times.length) throw new Error('This video has no frames.');
-    var t0 = times[0], N = times.length;
-    var dur = function (i) { return i + 1 < N ? times[i + 1] - times[i] : 1 / fps; };
-
-    try { renderer = createGLRenderer(); } catch (e) { renderer = null; }
-    if (!renderer) renderer = createCPURenderer();
-    var correct = corrector(renderer, o);
-
-    sink = await createSink(o.name, 'video/mp4');
-    output = new Output({
-      format: new Mp4OutputFormat({ fastStart: false }),
-      target: new StreamTarget(sink.stream, { chunked: true, chunkSize: 16 * 1024 * 1024 })
-    });
-    var vsrc = new VideoSampleSource({ codec: plan.codec, quality: new Quality({ bitrate: plan.bitrate }), keyFrameInterval: 1, sizeChangeBehavior: 'fill' });
-    output.addVideoTrack(vsrc, { frameRate: fps });
-    var atrack = await input.getPrimaryAudioTrack(), asrc = null, acodec = atrack ? await atrack.getCodec() : null;
-    if (acodec) { asrc = new EncodedAudioPacketSource(acodec); output.addAudioTrack(asrc); }
-    await output.start();
+    renderer = newRenderer();
+    var correct = corrector(renderer, o), pacer = makePacer(strict);
+    out = await openOutput(input, o, plan, fps, pacer);
     if (o.onStart) o.onStart({ width: plan.width, height: plan.height, srcWidth: W, srcHeight: H, fps: fps, codec: plan.codec, bitrate: plan.bitrate, gpu: renderer.kind === 'gpu', via: 'element' });
 
-    var canceled = false;
-    if (o.signal) {
-      if (o.signal.aborted) throw aborted();
-      onAbort = function () { canceled = true; };
-      o.signal.addEventListener('abort', onAbort);
-    }
-
-    // audio: copied packet for packet, alongside the video
-    var audioDone = (async function () {
-      if (!asrc) return;
-      var cfg = await atrack.getDecoderConfig(), firstPkt = true;
-      for await (var p of new EncodedPacketSink(atrack).packets()) {
-        if (canceled) return;
-        await asrc.add(p, firstPkt && cfg ? { decoderConfig: cfg } : undefined);
-        firstPkt = false;
-      }
-      asrc.close();
-    })();
-    audioDone.catch(function () {});
-
-    // video: correct the picture on screen and queue it for the encoder as frame i
-    var next = 0, chain = Promise.resolve(), pending = 0;
-    var emit = function (i, t) {
-      renderer.upload(v, plan.width, plan.height);
-      var s = new VideoSample(correct(t), { timestamp: times[i], duration: dur(i) });
-      pending++;
-      chain = chain.then(function () { return vsrc.add(s).finally(function () { s.close(); pending--; }); });
-      next = i + 1;
-      if (o.onProgress) o.onProgress(next / N * 0.99);
-    };
-
-    // Seek to every frame in turn. Slower than playing, but exact: during playback the element may
-    // already show a newer picture than the one it reports, which would make the output judder.
     v.pause();
-    while (next < N) {
-      if (canceled) throw aborted();
-      await seekEl(v, times[next] - t0 + 0.001);
-      emit(next, times[next] - t0);
-      if (pending > 4) await chain;
+    for (var i = 0; i < N; i++) {
+      if (o.signal && o.signal.aborted) throw aborted();
+      if (times[i] < 0) continue;
+      await seekEl(v, times[i] - t0 + 0.001);
+      renderer.upload(v, plan.width, plan.height);
+      var canvas = correct(times[i] - t0);
+      await pacer.wait();
+      var s = new VideoSample(canvas, { timestamp: times[i], duration: i + 1 < N ? times[i + 1] - times[i] : 1 / fps });
+      try { await out.vsrc.add(s); } finally { s.close(); }
+      if (o.onProgress) o.onProgress(Math.min(0.99, (i + 1) / N));
     }
-    await chain;
-    vsrc.close();
-    await audioDone;
-    await output.finalize();
-    output = null;
+    var result = await out.finish();
+    out = null;
+    if (pacer.dropped() > 0) throw codedError('The encoder skipped ' + pacer.dropped() + ' frames.', 'dropped');
     if (o.onProgress) o.onProgress(1);
-    var out = await sink.finish();
-    sink = null;
-    return out;
-
+    return result;
   } finally {
-    if (onAbort) o.signal.removeEventListener('abort', onAbort);
-    if (output) { try { await output.cancel(); } catch (e) {} }
-    if (sink) sink.abort();
+    if (out) await out.cancel();
     if (renderer) renderer.dispose();
     el.dispose();
   }
