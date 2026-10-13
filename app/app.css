@@ -50,6 +50,7 @@ button { cursor: pointer; border-radius: 0; touch-action: manipulation; }
 .mark { display: flex; align-items: center; gap: 10px; font-weight: 800; padding: 0 16px; letter-spacing: .02em; font-size: 15px; font-family: var(--mono); }
 .logo { width: 22px; height: 22px; flex: none; }
 .mark i { font-style: normal; color: var(--hot); }
+.ver { font-weight: 400; font-size: 11px; color: #8c8c8c; letter-spacing: .08em; }
 .bar-note { color: #8c8c8c; padding: 0 8px; line-height: var(--barh); white-space: nowrap; overflow: hidden; }
 .bar-fill { flex: 1; }
 .bar-btn { background: #000; color: #fff; border: 0; border-left: 1px solid #333; padding: 0 18px; font-weight: 700; letter-spacing: .08em; font-size: 12px; }

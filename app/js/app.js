@@ -3,6 +3,7 @@ import { renderJPEG, warmPhotoWorkers, sourceSize } from './photo.js';
 import { readExif } from './exif.js';
 import * as store from './store.js';
 
+var VERSION = '1.6'; // shown in the top bar; bump with every release
 var $ = function (id) { return document.getElementById(id); };
 var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 var coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
@@ -269,6 +270,13 @@ $('lockBtn').onclick = function () {
 var nextId = 1;
 function isVideoFile(f) { return /^video\//.test(f.type) || /\.(mp4|mov|m4v)$/i.test(f.name); }
 var CLOUD_TIP = 'Photos and videos kept only in iCloud or Google Photos have to download to the phone first, which needs a connection.';
+// iOS re-encodes every video picked from the Photos library before the page gets it (WebKit hands over a fresh .MOV export),
+// and that can cut the frame rate: an 8:7 4K60 GoPro clip arrives at 15 fps. Clips picked through Files arrive untouched.
+function looksReencoded(f) {
+  if (!/\.mov$/i.test(f.name)) return false;
+  if (/^(GX|GH|GS|GOPR|GP)\d/i.test(f.name)) return true; // GoPro never writes .MOV
+  return isIOS && /\.MOV$/.test(f.name) && Date.now() - f.lastModified < 15 * 60e3;
+}
 function addFiles(list) {
   var all = Array.prototype.slice.call(list || []);
   var media = all.filter(function (f) {
@@ -279,7 +287,8 @@ function addFiles(list) {
   if (!files.length) { if (!media.length) toast(all.length ? 'Choose photos or videos.' : 'Nothing was added. ' + CLOUD_TIP); return; }
   var first = S.items.length;
   files.forEach(function (f) {
-    S.items.push({ id: nextId++, file: f, name: f.name, kind: isVideoFile(f) ? 'video' : 'image', pick: null, lock: null, time: null });
+    var video = isVideoFile(f);
+    S.items.push({ id: nextId++, file: f, name: f.name, kind: video ? 'video' : 'image', pick: null, lock: null, time: null, reencoded: video && looksReencoded(f) });
   });
   $('empty').hidden = true; $('editor').hidden = false;
   warmPhotoWorkers();
@@ -369,6 +378,7 @@ function infoLine(it) {
     var v = it.vinfo;
     parts.push(v.width + '×' + v.height, (Math.round(v.fps * 100) / 100) + ' FPS', codecLabel(v.codec), fmtTime(v.end - v.start));
     if (v.hdr) parts.push('HDR');
+    if (it.reencoded) parts.push('RE-ENCODED BY iOS');
   } else if (it.dims) {
     parts.push(it.dims[0] + '×' + it.dims[1], (it.dims[0] * it.dims[1] / 1e6).toFixed(1) + ' MP');
   }
@@ -393,7 +403,7 @@ function updateKindUI() {
   if (isV) {
     var v = it.vinfo, f = VIDEO_Q[prefs.quality];
     note = (v && v.bitrate ? '≈' + Math.round(v.bitrate * f / 1e6) + ' Mb/s · ' : '') + Math.round(f * 100) + '% of source bitrate. Same resolution and frame rate, audio copied. Keep this screen open while exporting.' +
-      (isIOS ? ' iPhone: if the size above is lower than you filmed, iOS shrank it on import. Pick the clip via Files instead.' : '');
+      (isIOS ? ' iPhone: iOS re-encodes clips picked from Photo Library (frame rate or size can drop). Pick them under Choose Files for the original.' : '');
     if (!videoSupport) note = 'Video export needs WebCodecs (recent Chrome, Edge, Safari or Firefox). You can still save frames and export a LUT.';
   } else {
     note = 'JPEG ' + JPEG_Q[prefs.quality] + ', no chroma subsampling, full ' + (it.dims ? it.dims[0] + '×' + it.dims[1] : 'resolution') +
@@ -453,6 +463,7 @@ function select(i) {
       if (it.time == null) it.time = Math.min(v.start + (v.end - v.start) * 0.5, v.start + 2);
       syncScrub(it);
       updateKindUI(); updateModeUI();
+      warnReencoded(it);
       return showFrame(it, it.time, token);
     });
   } else {
@@ -722,6 +733,7 @@ function offer(files, failed) {
   if (failed && failed.length) sub.push(failed.length + ' failed — ' + failed.join(' · '));
   if (share && isIOS) sub.push('In the share sheet, choose “Save Image” / “Save Video” to put them in Photos');
   $('sheetSub').textContent = sub.join(' · ');
+  $('sheetClose').hidden = false;
   var btns = $('sheetBtns'); btns.innerHTML = '';
   var add = function (label, fn, primary) {
     var b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (primary ? ' primary' : ''); b.textContent = label;
@@ -742,6 +754,25 @@ function offer(files, failed) {
   first.focus({ preventScroll: true });
 }
 function closeSheet() { $('sheet').hidden = true; S.offered = null; }
+
+// Say once per clip (and once per session for clips that kept their frame rate) that iOS converted it, and how to get the original.
+var warnedReencode = false;
+function warnReencoded(it) {
+  var v = it.vinfo;
+  if (!it.reencoded || it.warned || !v || S.job || !$('sheet').hidden) return;
+  var choppy = v.fps > 0 && v.fps < 23.5;
+  if (!choppy && warnedReencode) return;
+  it.warned = warnedReencode = true;
+  $('sheetTitle').textContent = choppy ? 'iOS CUT THIS CLIP TO ' + Math.round(v.fps) + ' FPS' : 'iOS RE-ENCODED THIS CLIP';
+  $('sheetSub').textContent = 'Videos picked from Photo Library are converted by iOS before any app gets them' +
+    (choppy ? ', and this one lost frames. ' : '. ') +
+    'For the original: in Photos, Share → Save to Files. Then add it here with Choose Files instead of Photo Library.';
+  var btns = $('sheetBtns'); btns.innerHTML = '';
+  var b = document.createElement('button'); b.type = 'button'; b.className = 'btn primary'; b.textContent = 'GOT IT';
+  b.onclick = closeSheet; btns.appendChild(b);
+  $('sheetClose').hidden = true;
+  $('sheet').hidden = false;
+}
 $('sheetClose').onclick = closeSheet;
 
 function updateFolderUI() {
@@ -790,6 +821,8 @@ $('installBtn').onclick = function () {
 };
 var standalone = navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
 if (isIOS && !standalone) $('iosTip').hidden = false;
+if (isIOS) $('iosVidTip').hidden = false;
+$('ver').textContent = 'V' + VERSION;
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
   var reloading = false, wantUpdate = false;

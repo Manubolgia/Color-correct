@@ -30,7 +30,7 @@ Fixes the colour of underwater photos and GoPro video, directly on your phone or
 - Video export needs WebCodecs: current Safari, Chrome, Edge or Firefox. If the browser's WebCodecs decoder refuses a clip (Safari does this for some H.264/HEVC files it can play fine), the app first retries with a cleaned-up decoder setup, then falls back to the browser's own video player and takes each frame from it. Export through that fallback can be slower, but every frame still matches the source exactly. HEVC (H.265) clips need a browser and device that can play HEVC: Safari, or Chrome/Edge with hardware support.
 - Everything works offline once the app is installed. If the picker adds nothing while you're offline, the photos or videos are probably kept only in iCloud / Google Photos and have to download to the phone first, which needs a connection.
 - Keep the screen on while a video exports. The app asks the device not to sleep, but switching apps can pause the export.
-- On iPhone, picking a video from the Photos library can make iOS hand over a compressed copy. If the resolution shown is lower than what you filmed, pick the clip via **Files** instead.
+- **iPhone: add videos with *Choose Files*, not *Photo Library*.** iOS re-encodes every video picked from the Photo Library before any web app gets it (the “Preparing…” step), and that can cut the frame rate or size: an 8:7 4K60 GoPro clip arrives at 15 fps. To keep the original, save the clip to Files first (Photos → Share → Save to Files). The app flags clips that look re-encoded.
 - Exports wait in the browser's private storage until you save them, so long 4K clips don't have to fit in memory. That storage is cleared the next time the app starts.
 
 ## How it works
@@ -53,4 +53,4 @@ When you add a file to `app/`, also add it to `ASSETS` in `app/sw.js` (deploys f
 
 To update the vendored Mediabunny bundle: `cd tools && npm install && npm run vendor`.
 
-Every push to `main` deploys to GitHub Pages (`.github/workflows/pages.yml`). The service worker's cache name is stamped with the commit, so installed apps show an **UPDATE** button when a new version is live.
+Every push to `main` deploys to GitHub Pages (`.github/workflows/pages.yml`). The service worker's cache name is stamped with the commit, so installed apps pick up a new version on their own (or show **UPDATE** when files are open). The version shown in the top bar is `VERSION` in `app/js/app.js`; bump it with each release.
