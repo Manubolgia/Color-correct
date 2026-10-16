@@ -10,7 +10,9 @@ var ASSETS = [
   'js/color.js',
   'js/exif.js',
   'js/gl.js',
+  'js/ios.js',
   'js/jpeg.js',
+  'js/media.js',
   'js/opfs-worker.js',
   'js/photo-worker.js',
   'js/photo.js',
@@ -64,6 +66,8 @@ self.addEventListener('fetch', function (e) {
 
   if (req.method !== 'GET') return;
   if (req.mode === 'navigate') {
+    // UW Reels (reels/) is a separate app with its own service worker.
+    if (url.pathname.startsWith(new URL('reels/', self.registration.scope).pathname)) return;
     e.respondWith(caches.match('index.html', { cacheName: CACHE }).then(function (hit) {
       return hit || fetch(req);
     }).catch(function () { return fetch(req); }));

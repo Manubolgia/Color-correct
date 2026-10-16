@@ -5,10 +5,14 @@
 */
 
 var worker = null, seq = 0, waiting = new Map(), opfsOK = null, counter = 0;
+var area = 'exports'; // folder in the private file system; each app keeps its own, so one never clears the other's
+
+export function useArea(name) { area = name; }
 
 function call(msg, transfer) {
   return new Promise(function (res, rej) {
     msg.id = ++seq;
+    msg.dir = area;
     waiting.set(msg.id, { res: res, rej: rej });
     worker.postMessage(msg, transfer || []);
   });
@@ -40,7 +44,7 @@ export function clearExports() {
 
 async function opfsFile(internal, name, type) {
   var root = await navigator.storage.getDirectory();
-  var dir = await root.getDirectoryHandle('exports');
+  var dir = await root.getDirectoryHandle(area);
   var f = await (await dir.getFileHandle(internal)).getFile();
   return new File([f], name, { type: type, lastModified: Date.now() });
 }

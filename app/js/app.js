@@ -2,10 +2,10 @@ import { DEFAULTS, clamp, computeParams, applyCorrection, makeCube } from './col
 import { renderJPEG, warmPhotoWorkers, sourceSize } from './photo.js';
 import { readExif } from './exif.js';
 import * as store from './store.js';
+import { isIOS, looksReencoded } from './ios.js';
 
-var VERSION = '1.6'; // shown in the top bar; bump with every release
+var VERSION = '1.7'; // shown in the top bar; bump with every release
 var $ = function (id) { return document.getElementById(id); };
-var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 var coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
 var PREVIEW_EDGE = 1440, ANALYSIS_EDGE = 320;
 var PREFS = 'uw-color-v2';
@@ -270,13 +270,6 @@ $('lockBtn').onclick = function () {
 var nextId = 1;
 function isVideoFile(f) { return /^video\//.test(f.type) || /\.(mp4|mov|m4v)$/i.test(f.name); }
 var CLOUD_TIP = 'Photos and videos kept only in iCloud or Google Photos have to download to the phone first, which needs a connection.';
-// iOS re-encodes every video picked from the Photos library before the page gets it (WebKit hands over a fresh .MOV export),
-// and that can cut the frame rate: an 8:7 4K60 GoPro clip arrives at 15 fps. Clips picked through Files arrive untouched.
-function looksReencoded(f) {
-  if (!/\.mov$/i.test(f.name)) return false;
-  if (/^(GX|GH|GS|GOPR|GP)\d/i.test(f.name)) return true; // GoPro never writes .MOV
-  return isIOS && /\.MOV$/.test(f.name) && Date.now() - f.lastModified < 15 * 60e3;
-}
 function addFiles(list) {
   var all = Array.prototype.slice.call(list || []);
   var media = all.filter(function (f) {

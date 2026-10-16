@@ -23,11 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check the offline cache lists every app file
+      - name: Check the offline caches list every file the apps need
         run: node tools/check-assets.mjs
 
       - name: Stamp the build so installed apps pick up the update
-        run: sed -i "s/__BUILD__/${GITHUB_SHA::8}/" app/sw.js
+        run: sed -i "s/__BUILD__/${GITHUB_SHA::8}/" app/sw.js app/reels/sw.js
 
       - uses: actions/configure-pages@v5
 

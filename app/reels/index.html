@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>UW Reels</title>
+<meta name="description" content="Cut GoPro and phone video to a 9:16 Instagram Reel with a frame that moves to keep you in shot: keyframes, record a move with your finger, or let it follow you. Works offline, nothing is uploaded.">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="light dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="UW Reels">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="../app.css">
+<link rel="stylesheet" href="reels.css">
+<script type="module" src="js/reels.js"></script>
+</head>
+<body>
+<div class="app">
+<header class="bar">
+  <span class="mark"><svg class="logo" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" fill="#0e5e63"/><rect x="166" y="96" width="180" height="320" fill="#ff3b00" stroke="#fff" stroke-width="28"/><rect x="226" y="226" width="60" height="60" fill="#fff" stroke="#000" stroke-width="12"/><path d="M124 214 76 256 124 298zM388 214 436 256 388 298z" fill="#fff"/></svg><span>UW<i>/</i>REELS</span><span id="ver" class="ver"></span></span>
+  <span id="offline" class="bar-note" hidden>OFFLINE READY</span>
+  <span class="bar-fill"></span>
+  <a id="colorLink" class="bar-btn bar-link" href="../">COLOR</a>
+  <button id="updateBtn" class="bar-btn hot" type="button" hidden>UPDATE</button>
+  <button id="installBtn" class="bar-btn" type="button" hidden>INSTALL</button>
+</header>
+
+<section id="empty" class="empty">
+  <label id="drop" class="drop" for="file">
+    <span class="k">INPUT — MP4 · MOV &nbsp;/&nbsp; OUTPUT — 1080×1920 REEL</span>
+    <span class="drop-h">Drop a<br>video.</span>
+    <span class="drop-cta">CHOOSE VIDEO <b>→</b></span>
+  </label>
+  <ol class="facts">
+    <li><span class="k">01</span><b>DRAG</b><span>Move the 9:16 frame at any moment. Each move is a keyframe; the frame glides between them.</span></li>
+    <li><span class="k">02</span><b>RECORD</b><span>Drag while the clip plays and the frame follows your finger.</span></li>
+    <li><span class="k">03</span><b>FOLLOW ME</b><span>Tap yourself once and the frame tracks you through the clip.</span></li>
+  </ol>
+  <p class="foot">Runs on this device. Nothing is uploaded.<span id="iosTip" hidden> To install: Share → Add to Home Screen.</span><span id="iosVidTip" hidden> Add clips with Choose Files, not Photo Library. iOS re-encodes clips from Photo Library and can drop frames.</span></p>
+</section>
+
+<section id="editor" class="reditor" hidden>
+  <div id="stage" class="stage rstage">
+    <div id="vp" class="vp">
+      <video id="vid" playsinline preload="auto"></video>
+      <canvas id="still" hidden></canvas>
+      <div id="win" class="win"><span class="win-tag">9:16</span></div>
+      <div id="dot" class="dot" hidden></div>
+    </div>
+    <div id="loading" class="loading" hidden>LOADING</div>
+    <button id="viewBtn" class="view-btn" type="button" aria-pressed="false">9:16 VIEW</button>
+    <p id="hint" class="hint">DRAG THE FRAME</p>
+    <p id="stageMsg" class="stage-msg" hidden></p>
+  </div>
+
+  <div class="transport">
+    <button id="playBtn" class="tbtn play" type="button" aria-label="Play">▶</button>
+    <button id="backBtn" class="tbtn" type="button" aria-label="Back one frame">‹</button>
+    <button id="fwdBtn" class="tbtn" type="button" aria-label="Forward one frame">›</button>
+    <span id="timeLabel" class="tlabel">0:00.00</span>
+    <button id="rateBtn" class="tbtn txt" type="button" aria-label="Playback speed">1×</button>
+    <button id="keyBtn" class="tbtn txt" type="button" aria-label="Keyframe here">◇</button>
+    <button id="undoBtn" class="tbtn txt" type="button" aria-label="Undo" disabled>UNDO</button>
+  </div>
+
+  <div id="tl" class="tl" role="slider" aria-label="Timeline" tabindex="0">
+    <div class="tl-trim"><i id="tlRange"></i><b id="hIn" class="tl-h in"></b><b id="hOut" class="tl-h out"></b></div>
+    <div class="tl-bar">
+      <i id="tlShadeL" class="tl-shade"></i><i id="tlShadeR" class="tl-shade"></i>
+      <i id="tlTrack" class="tl-track" hidden></i>
+      <span id="tlKeys"></span>
+      <i id="tlPh" class="tl-ph"></i>
+    </div>
+  </div>
+
+  <div class="tools">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="motion">MOTION</button>
+      <button type="button" role="tab" data-tab="frame">FRAME</button>
+      <button type="button" role="tab" data-tab="trim">TRIM</button>
+      <button type="button" role="tab" data-tab="output">OUTPUT</button>
+    </div>
+    <div class="panes">
+      <div class="pane" data-pane="motion">
+        <div class="group">
+          <div class="pair">
+            <button id="followBtn" class="btn hotline" type="button">FOLLOW ME</button>
+            <button id="clearBtn" class="btn" type="button">CLEAR KEYS</button>
+          </div>
+          <p id="motionNote" class="fine"></p>
+        </div>
+        <div class="group">
+          <div class="label">BETWEEN KEYFRAMES</div>
+          <div id="modeSeg" class="seg">
+            <button type="button" data-mode="smooth">SMOOTH</button>
+            <button type="button" data-mode="linear">LINEAR</button>
+            <button type="button" data-mode="jump">JUMP</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" data-pane="frame">
+        <div class="group">
+          <div class="sl-top"><span class="label">ZOOM</span><output id="zoomVal">1.0×</output></div>
+          <input id="zoom" type="range" min="100" max="400" step="1" value="100" aria-label="Zoom">
+          <div class="pair top">
+            <button id="centerBtn" class="btn" type="button">CENTER</button>
+            <button id="unzoomBtn" class="btn" type="button">ZOOM 1×</button>
+          </div>
+          <p id="cropNote" class="fine"></p>
+        </div>
+      </div>
+
+      <div class="pane" data-pane="trim">
+        <div class="group">
+          <div class="pair">
+            <button id="inBtn" class="btn" type="button">START HERE</button>
+            <button id="outBtn" class="btn" type="button">END HERE</button>
+            <button id="trimReset" class="btn" type="button">ALL</button>
+          </div>
+          <p id="trimNote" class="fine"></p>
+        </div>
+      </div>
+
+      <div class="pane" data-pane="output">
+        <div class="group">
+          <div class="label">FRAME RATE</div>
+          <div id="fpsSeg" class="seg">
+            <button type="button" data-fps="src">SOURCE</button>
+            <button type="button" data-fps="30">30 FPS</button>
+          </div>
+          <p id="outNote" class="fine"></p>
+        </div>
+        <div class="group">
+          <div class="label">QUALITY</div>
+          <div id="qualSeg" class="seg">
+            <button type="button" data-q="std">STD</button>
+            <button type="button" data-q="high">HIGH</button>
+          </div>
+        </div>
+        <div class="group file">
+          <div class="file-top"><span id="fileName" class="fname"></span><button id="openBtn" class="link" type="button">OPEN ANOTHER</button></div>
+          <div id="fileInfo" class="finfo"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="go">
+    <button id="exportBtn" class="btn primary" type="button">EXPORT REEL</button>
+  </div>
+</section>
+</div>
+
+<input type="file" id="file" class="sr-only" accept="video/*,.mp4,.mov,.m4v" tabindex="-1">
+
+<div id="job" class="dock" hidden>
+  <div class="meter"><i id="jobBar"></i></div>
+  <div class="dock-in">
+    <div class="dock-text">
+      <strong id="jobTitle">EXPORTING</strong>
+      <span id="jobSub"></span>
+    </div>
+    <span id="jobPct" class="pct">0%</span>
+    <button id="cancelBtn" class="btn" type="button">CANCEL</button>
+  </div>
+</div>
+
+<div id="sheet" class="dock" role="dialog" aria-labelledby="sheetTitle" hidden>
+  <div class="dock-in">
+    <div class="dock-text">
+      <strong id="sheetTitle">READY</strong>
+      <span id="sheetSub"></span>
+    </div>
+    <div id="sheetBtns" class="dock-btns"></div>
+    <button id="sheetClose" class="btn ghost" type="button" aria-label="Close">CLOSE</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

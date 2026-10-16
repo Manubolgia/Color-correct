@@ -1,0 +1,91 @@
+/* UW Reels — on top of UW Color's base styles (../app.css): same rules, type and accent. */
+
+/* ---------- Editor: phone portrait (default) ---------- */
+.reditor {
+  flex: 1; min-height: 0; display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto auto auto;
+  grid-template-areas: "stage" "transport" "tl" "tools" "go";
+}
+.rstage { grid-area: stage; padding: 10px 10px 30px; touch-action: none; }
+.vp { position: relative; overflow: hidden; background: #000; touch-action: none; cursor: grab; }
+.vp:active { cursor: grabbing; }
+.vp video, .vp canvas { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; max-width: none; pointer-events: none; }
+/* the 9:16 window: everything outside it is dimmed */
+.win { position: absolute; left: 0; top: 0; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .58); outline: 2px solid #fff; outline-offset: -1px; pointer-events: none; }
+.win::before, .win::after { content: ""; position: absolute; left: 33.333%; right: 33.333%; top: 0; bottom: 0; border-left: 1px solid rgba(255,255,255,.35); border-right: 1px solid rgba(255,255,255,.35); }
+.win::after { left: 0; right: 0; top: 33.333%; bottom: 33.333%; border: 0; border-top: 1px solid rgba(255,255,255,.35); border-bottom: 1px solid rgba(255,255,255,.35); }
+.win-tag { position: absolute; left: -2px; top: -2px; background: #fff; color: #000; font: 700 10px/1 var(--mono); letter-spacing: .1em; padding: 5px 6px; }
+.win.key { outline-color: var(--hot); }
+.win.key .win-tag { background: var(--hot); color: var(--on-hot); }
+.win.rec { outline-color: var(--hot); outline-width: 3px; }
+.vp.reel .win { display: none; }
+.vp.reel { cursor: move; }
+.dot { position: absolute; left: 0; top: 0; width: 12px; height: 12px; margin: -6px 0 0 -6px; background: var(--hot); border: 2px solid #fff; pointer-events: none; }
+.vp.reel .dot { display: none; }
+.view-btn {
+  position: absolute; top: 10px; right: 10px; z-index: 3; border: 2px solid #000; background: #fff; color: #000;
+  font: 700 11px/1 var(--mono); letter-spacing: .1em; padding: 8px 10px;
+}
+.view-btn[aria-pressed="true"] { background: var(--hot); color: var(--on-hot); border-color: var(--hot); }
+.rstage .hint { color: var(--mute); }
+.rstage.following .vp { cursor: crosshair; }
+
+/* ---------- Transport ---------- */
+.transport { grid-area: transport; display: flex; align-items: stretch; border-top: var(--rule); height: 44px; min-width: 0; }
+.tbtn { flex: none; width: 42px; border: 0; border-right: var(--hair); background: transparent; font: 400 20px/1 var(--mono); padding: 0; }
+.tbtn.play { width: 52px; background: var(--fg); color: var(--bg); font-size: 16px; }
+.tbtn.txt { width: auto; min-width: 42px; padding: 0 9px; font: 700 11px/1 var(--mono); letter-spacing: .08em; border-right: 0; border-left: var(--hair); }
+#keyBtn { font-size: 18px; }
+#keyBtn.on { background: var(--hot); color: var(--on-hot); }
+.tbtn:hover:not(:disabled) { background: var(--track); }
+.tbtn.play:hover { background: var(--hot); color: var(--on-hot); }
+.tbtn:disabled { opacity: .3; }
+.tlabel { flex: 1; min-width: 0; display: flex; align-items: center; padding: 0 8px; font: 11px/1 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+
+/* ---------- Timeline: trim brackets on top, keyframes and playhead below ---------- */
+.tl { grid-area: tl; position: relative; height: 54px; border-top: var(--hair); touch-action: none; cursor: pointer; padding: 0 16px; }
+.tl-trim { position: relative; height: 16px; }
+.tl-trim i { position: absolute; top: 6px; height: 4px; background: var(--fg); }
+.tl-h { position: absolute; top: 0; width: 12px; height: 16px; margin-left: -6px; background: var(--fg); }
+.tl-h::after { content: ""; position: absolute; left: -10px; right: -10px; top: -4px; bottom: -40px; } /* bigger hit area */
+.tl-h.in { clip-path: polygon(0 0, 100% 0, 100% 30%, 50% 30%, 50% 100%, 0 100%); }
+.tl-h.out { clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 100%, 50% 30%, 0 30%); }
+.tl-bar { position: relative; height: 38px; background: var(--stage); }
+.tl-shade { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(-45deg, transparent 0 4px, rgba(127,127,127,.45) 4px 6px); }
+.tl-track { position: absolute; bottom: 0; height: 4px; background: var(--hot); opacity: .7; }
+.tl-k { position: absolute; top: 50%; width: 11px; height: 11px; margin: -6px 0 0 -6px; background: var(--fg); transform: rotate(45deg); pointer-events: none; }
+.tl-k.on { background: var(--hot); }
+.tl-ph { position: absolute; top: -4px; bottom: 0; width: 2px; margin-left: -1px; background: var(--hot); pointer-events: none; }
+
+.reditor .tools { grid-area: tools; }
+.reditor .panes { height: 148px; }
+.reditor .go { grid-area: go; }
+.pair.top { margin-top: 10px; }
+.btn.hotline { border-color: var(--hot); }
+.btn.hotline.on { background: var(--hot); color: var(--on-hot); }
+.reditor .sl-top .label { margin: 0; }
+.reditor.busy .rstage, .reditor.busy .transport, .reditor.busy .tl, .reditor.busy .tools { pointer-events: none; }
+.reditor.busy .tools, .reditor.busy .transport, .reditor.busy .tl { opacity: .4; }
+
+/* ---------- Tablets, desktops and phones held sideways ---------- */
+@media (min-width: 900px), (orientation: landscape) and (min-width: 560px) and (max-height: 560px) {
+  .reditor {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas: "stage tools" "transport tools" "tl go";
+  }
+  .reditor .tools { border-top: 0; border-left: var(--rule); overflow-y: auto; overscroll-behavior: contain; }
+  .reditor .go { border-left: var(--rule); }
+  .reditor .tabs { display: none; }
+  .reditor .panes { height: auto; overflow: visible; display: flex; flex-direction: column; }
+  .reditor .pane { display: block; border-bottom: var(--hair); }
+  .reditor .pane[data-pane="output"] { display: contents; }
+  .reditor .pane[data-pane="output"] .file { order: -1; border-bottom: var(--rule); }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  .reditor { grid-template-columns: minmax(0, 1fr) 300px; }
+  .transport { height: 38px; }
+  .tl { height: 46px; }
+  .tl-bar { height: 30px; }
+}

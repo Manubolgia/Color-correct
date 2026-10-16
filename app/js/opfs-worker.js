@@ -1,15 +1,15 @@
 /* Writes export files into the origin-private file system, so big videos never have to sit in memory. */
 var handles = new Map();
 
-async function dir() {
+async function dir(m) {
   var root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle('exports', { create: true });
+  return root.getDirectoryHandle(m.dir || 'exports', { create: true });
 }
 
 async function handle(m) {
   switch (m.op) {
     case 'open': {
-      var d = await dir(), fh = await d.getFileHandle(m.name, { create: true });
+      var d = await dir(m), fh = await d.getFileHandle(m.name, { create: true });
       var h = await fh.createSyncAccessHandle();
       await h.truncate(0); // (older Safari returns promises from these calls; awaiting is harmless elsewhere)
       handles.set(m.name, h);
@@ -37,16 +37,16 @@ async function handle(m) {
     case 'remove': {
       var h4 = handles.get(m.name);
       if (h4) { try { await h4.close(); } catch (e) {} handles.delete(m.name); }
-      try { await (await dir()).removeEntry(m.name); } catch (e) {}
+      try { await (await dir(m)).removeEntry(m.name); } catch (e) {}
       return;
     }
     case 'clear': {
       var root = await navigator.storage.getDirectory();
-      try { await root.removeEntry('exports', { recursive: true }); } catch (e) {}
+      try { await root.removeEntry(m.dir || 'exports', { recursive: true }); } catch (e) {}
       return;
     }
     case 'probe': {
-      var d2 = await dir(), f2 = await d2.getFileHandle('.probe', { create: true });
+      var d2 = await dir(m), f2 = await d2.getFileHandle('.probe', { create: true });
       var h5 = await f2.createSyncAccessHandle();
       await h5.close();
       await d2.removeEntry('.probe');
