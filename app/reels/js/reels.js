@@ -9,7 +9,7 @@ import { isIOS, looksReencoded } from '../../js/ios.js';
 import { clamp, cropSize, cropRect, fit, evaluate, keyNear, setKey, replaceRange, toKeys, MAX_ZOOM } from './path.js';
 import { trackSubject } from './track.js';
 
-var VERSION = '1.0'; // shown in the top bar; bump with every release
+var VERSION = '1.1'; // shown in the top bar; bump with every release
 var $ = function (id) { return document.getElementById(id); };
 var coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
 var PREFS = 'uw-reels-v1', PROJECTS = 'uw-reels-projects-v1';
@@ -722,8 +722,10 @@ $('exportBtn').onclick = async function () {
           return {
             kind: 'cpu',
             draw: function (f) {
-              var r = cropRect(src.width, src.height, evaluate(keys, f.t, mode));
-              x.drawImage(f.image(), r.x, r.y, r.w, r.h, 0, 0, plan.width, plan.height);
+              var r = cropRect(src.width, src.height, evaluate(keys, f.t, mode)), s = plan.width / r.w;
+              // Crop by placing the whole frame so the crop fills the canvas (the rest is clipped). Safari ignores
+              // the source rectangle when drawing a VideoFrame and would squeeze the full frame into 9:16.
+              x.drawImage(f.image(), -r.x * s, -r.y * s, src.width * s, src.height * s);
               return c;
             },
             dispose: function () { c.width = c.height = 1; }
